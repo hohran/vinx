@@ -1,0 +1,45 @@
+rotate $v $d = rotate $v $d by 1;
+rotate $v = rotate $v right;
+
+switch $v into $c = {
+    rotate $v;
+}
+
+$p1 = (500,0);
+$p2 = (600,100);
+
+every frame {
+    draw red rectangle from $p1 to $p2;
+}
+
+every frame {
+    move $p1 right by 5;
+    move $p2 right by 5;
+}
+
+$color rectangle from $p1 to $p2 {
+    every frame {
+        draw $color rectangle from $p1 to $p2;
+        draw $color circle at $p1 s prumerem $d;
+    }
+
+    move $this $direction by $step {
+        move $p1 $direction by $step;
+        move $p2 $direction by $step;
+    }
+}
+
+$seznam = [$p1,$p2,$pkocour,$parkour]
+every frame {
+    move $seznam right by 15;
+}
+
+$r1 = red rectangle from (0,0) to (100,100);
+$r2 = red rectangle from (20,20) to (200,200);
+every 2 frames {
+    move $r1 right by 10;
+}
+
+every frame {
+    move $r2 left by 1;
+}

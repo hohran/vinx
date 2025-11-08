@@ -1,0 +1,13 @@
+[package]
+name = "vinx"
+version = "0.1.0"
+edition = "2024"
+
+[build-dependencies]
+cc="*"
+
+[dependencies]
+rsframe = { path = "../../ref/rsframe/rsframe" } # version = "0.1.9" }
+image = { version = "0.25.8" }
+tree-sitter = { version = "0.25.8" }
+tree-sitter-vinx = { path = "../../grammars/tree-sitter-vinx" }
