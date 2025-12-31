@@ -9,6 +9,7 @@ mod builtins;
 mod component_class;
 mod operations;
 mod value;
+mod actions;
 
 use crate::variable::types::VariableType;
 

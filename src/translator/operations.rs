@@ -10,8 +10,6 @@ impl<'a> InnerTranslator<'a> {
     pub fn parse_operation(&mut self, node: &Node) {
         let (signature, operands, iterators) = self.parse_lhs(&child!(node[0]));
         let operation_node = child!(node[2]);
-        dbg!(node);
-        println!("lhs: {}, operation_node: {}", child!(node[0]), child!(node[2]).kind());
         self.handle_operation(&operation_node, &operands, &signature, iterators);
     }
 
@@ -61,7 +59,6 @@ impl<'a> InnerTranslator<'a> {
         let seq = self.get_sequence(node);
         let ints = self.action_decision_automaton.get_all_paths(&seq, var_count);
         if ints.is_empty() {
-            println!("{:?} has no ints",seq);
             return false;
         }
         interpretations.push(ints);
@@ -71,7 +68,6 @@ impl<'a> InnerTranslator<'a> {
     /// insert new operation in self.operations
     fn create_typed_operation(&mut self, signature: &Vec<Word>, operands: &Vec<String>, types: &Vec<VariableType>, events_node: &Node, iterators: &Vec<usize>, variables: &VariableMap) -> bool {
         // swap signature
-        println!("sign in create_typed_operation: {:?}", signature);
         let mut new_signature = vec![];
         for w in signature {
             if let Word::Type(VariableType::Any(var_id)) = w {
@@ -115,10 +111,6 @@ impl<'a> InnerTranslator<'a> {
                 }
                 _ => panic!()
             }
-        }
-        let all = self.action_decision_automaton.get_all_sequences();
-        for s in all {
-            println!("{}", seq_to_str(&s.1));
         }
         let sv = self.action_decision_automaton.run(&seq).expect(&format!("error: failed to get sequence {:?}", seq));
         if let SequenceValue::Operation(x) = sv {
@@ -165,7 +157,6 @@ impl<'a> InnerTranslator<'a> {
         for e in events_node.named_children(&mut events_node.walk()) {
             if e.kind() == "var_definition" {
                 let (name,val) = self.get_var_definition(&e);
-                println!("\nadding var {name} with val {val:?}\n\n");
                 variables.insert(name,val);
                 continue;
             }
@@ -185,7 +176,7 @@ impl<'a> InnerTranslator<'a> {
 
     fn add_operation(&mut self, signature: &Vec<Word>, operands: Vec<String>, events: Vec<Event>, iterators: &Vec<usize>, variables: &VariableMap) -> bool {
         let op_id = self._number_of_builtin_operations + self.operations.len();
-        println!("adding operation with signature {:?} as {op_id}", signature);
+        // println!("adding operation with signature {:?} as {op_id}", signature);
         let mut la = LinearAutomaton::from(signature);
         la.returns(SequenceValue::Operation(op_id));
         if self.action_decision_automaton.union(la).is_err() {

@@ -101,12 +101,10 @@ impl Automaton {
     // }
 
     pub fn get_all_paths(&self, seq: &Vec<Word>, var_count: usize) -> Vec<TypeConstraints> {
-        println!("getting all paths for: {}", seq_to_str(seq));
         self.get_all_paths_from(seq, 0, TypeConstraints::new(var_count), &mut HashMap::new())
     }
 
     fn get_all_paths_from(&self, seq: &[Word], start: usize, mut current_type_constraints: TypeConstraints, any_mapping: &mut HashMap<usize,VariableType>) -> Vec<TypeConstraints> {
-        println!("{current_type_constraints}");
         if seq.len() == 0 {
             current_type_constraints.refresh_bindings();
             return vec![current_type_constraints];
@@ -125,14 +123,12 @@ impl Automaton {
                             return vec![];
                         }
                     }
-                    print!("  {w:?} -> ");
                     out.append(&mut self.get_all_paths_from(&seq[1..], n, constraint_clone, &mut any_mapping_clone));
                 }
             }
             return out;
         } else {
             if let Some(n) = self.states[start].get_transition(w, any_mapping) {
-                print!("  {w:?} -> ");
                 return self.get_all_paths_from(&seq[1..], n, current_type_constraints, any_mapping);
             } else {
                 return vec![];

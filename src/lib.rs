@@ -14,7 +14,6 @@ pub mod variable;
 fn get_action_activeness(actions: &Vec<action::Action>) -> HashMap<String,bool> {
     let mut action_activeness: HashMap<String,bool> = HashMap::new();
     for a in actions {
-        println!("action: {}", a.get_name());
         if action_activeness.insert(a.get_name().to_string(), a.default_activeness()).is_some() {
             if !a.get_name().is_empty() {
                 panic!("multiple occurences of action name {}",a.get_name());
@@ -26,17 +25,12 @@ fn get_action_activeness(actions: &Vec<action::Action>) -> HashMap<String,bool> 
 
 pub fn run(media_file: String, command_file: String) {
     let (mut globals, mut components, mut actions, operations) = parse(&command_file);
-    println!("--- operations ---");
-    for op in operations.iter() {
-        println!("{:?}", op);
-    }
-    println!("--- actions ---");
-    for op in actions.iter() {
-        println!("{}", op);
-    }
+    // println!("--- actions ---");
+    // for op in actions.iter() {
+    //     println!("{}", op);
+    // }
     // return;
     let mut action_activeness = get_action_activeness(&actions);
-    dbg!(&action_activeness);
     // return;
     let mut video = Video::from_file(media_file, "ffmpeg").expect("could not read video file");
     preprocess(&mut video);

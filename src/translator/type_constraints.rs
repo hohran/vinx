@@ -61,13 +61,11 @@ impl TypeConstraints {
     }
 
     fn infer_intersect_bindings(&mut self, other: &mut Self) {
-        println!("{self} + {other}");
         let mut to_intersect: Vec<usize> = (0..self.types.len()).collect();
         while !to_intersect.is_empty() {
             let i = to_intersect.pop().unwrap();
             if self.types[i].is_subset_of(&other.types[i]) {
                 let common_depth = other.types[i].common_depth(&self.types[i]);
-                // println!("update binding of {:?} to {:?}", other.types[i], self.types[i].unwrap_depth(common_depth).with_inverted_binding());
                 let updated = other.update_binding(
                     other.types[i].get_binding()                     // binding of current type
                         .expect("error: expected to be ambiguous")   // if it is a superset, it should always be ambiguous (it will have a binding number)
@@ -104,7 +102,6 @@ impl TypeConstraints {
         }
         let mut out = Self::from(types);
         out.refresh_bindings();
-        println!("intersect: {self} + {other} => {out}");
         Some(out)
     }
 
@@ -112,7 +109,6 @@ impl TypeConstraints {
         assert!(var_id < self.types.len(), "variable with invalid id {var_id}");
         let var = &self.types[var_id];
         if let Some(prod) = var.intersect(var_type) {
-            println!("    {var:?} + {var_type:?} -> {prod:?}");
             self.types[var_id] = prod;
             true
         } else {
@@ -168,7 +164,6 @@ mod tests {
         // complex
         let tc1 = constaint![(Any(1)) [(Any(3))] (Any(2)) (Any(2)) [Int]];
         let tc2 = constaint![(Any(1)) (Any(1)) (Any(2)) (Any(1)) (Any(2))];
-        println!("\nthis:");
         assert_eq!(tc1.clone().intersect(tc2.clone()).unwrap(), constaint![[Int] [Int] [Int] [Int] [Int]]);
         // assert_eq!(tc2.clone().intersect(tc1.clone()).unwrap(), constaint![[Int] [Int] [Int] [Int] [Int]]);
     }
