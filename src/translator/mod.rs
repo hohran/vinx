@@ -10,7 +10,7 @@ mod component_class;
 mod operations;
 mod value;
 
-use crate::{variable::types::VariableType, vtype};
+use crate::variable::types::VariableType;
 
 #[derive(Clone,Hash,Eq,PartialEq,Debug)]
 pub enum Word {

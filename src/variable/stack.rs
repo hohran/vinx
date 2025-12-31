@@ -122,16 +122,4 @@ impl Stack {
         }
         None
     }
-
-    fn get_variable_vec_mut(&mut self, name: &str) -> Option<&mut VariableValue> {
-        for layer in self.layers.iter_mut().rev() {
-            let val = layer.get_mut(name);
-            if let Some(ref v) = val {
-                if matches!(v, VariableValue::Vec(_)) {
-                    return val;
-                }
-            }
-        }
-        None
-    }
 }

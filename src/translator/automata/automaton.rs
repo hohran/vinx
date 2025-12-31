@@ -15,18 +15,18 @@ impl Automaton {
         Self { states: vec![State::new()], return_values: HashMap::new() }
     }
 
-    pub fn from(la: LinearAutomaton) -> Self {
-        let mut states = vec![State::new()];
-        for t in &la.transitions {
-            let state_count = states.len();
-            let cur_state = state_count-1;
-            states.push(State::new());
-            states[cur_state].add_transition(t.clone(), state_count);
-        }
-        let mut return_values = HashMap::new();
-        return_values.insert(states.len()-1, la.return_value.expect("error: linear automaton has unset return value"));
-        Self { states, return_values }
-    }
+    // pub fn from(la: LinearAutomaton) -> Self {
+    //     let mut states = vec![State::new()];
+    //     for t in &la.transitions {
+    //         let state_count = states.len();
+    //         let cur_state = state_count-1;
+    //         states.push(State::new());
+    //         states[cur_state].add_transition(t.clone(), state_count);
+    //     }
+    //     let mut return_values = HashMap::new();
+    //     return_values.insert(states.len()-1, la.return_value.expect("error: linear automaton has unset return value"));
+    //     Self { states, return_values }
+    // }
 
     pub fn new_state(&mut self) -> usize {
         let state_count = self.states.len();
@@ -96,9 +96,9 @@ impl Automaton {
         return None;
     }
 
-    pub fn len(&self) -> usize {
-        self.states.len()
-    }
+    // pub fn len(&self) -> usize {
+    //     self.states.len()
+    // }
 
     pub fn get_all_paths(&self, seq: &Vec<Word>, var_count: usize) -> Vec<TypeConstraints> {
         println!("getting all paths for: {}", seq_to_str(seq));
@@ -140,13 +140,13 @@ impl Automaton {
         }
     }
 
-    fn get_current_var_id(&self, seq: &[Word]) -> Option<usize> {
-        if let Word::Type(VariableType::Any(var_id)) = &seq[0] {
-            Some(*var_id)
-        } else {
-            None
-        }
-    }
+    // fn get_current_var_id(&self, seq: &[Word]) -> Option<usize> {
+    //     if let Word::Type(VariableType::Any(var_id)) = &seq[0] {
+    //         Some(*var_id)
+    //     } else {
+    //         None
+    //     }
+    // }
 
     pub fn get_all_sequences(&self) -> Vec<(SequenceValue,Vec<Word>)> {
         self.get_all_sequences_rec(0, &vec![])

@@ -108,7 +108,7 @@ impl Drawable for Frame {
     }
 }
 
-fn blur(f: &mut Frame, l: usize, r: usize, t: usize, b: usize) {
+fn blur(_f: &mut Frame, _l: usize, _r: usize, _t: usize, _b: usize) {
     todo!();
 }
 

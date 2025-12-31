@@ -5,7 +5,7 @@ use std::{collections::HashMap, fmt::Display};
 
 use component::Components;
 
-use crate::{context::Context, variable::{stack::{Stack, VariableMap}, values::VariableValue, Variable, VariableLocation}};
+use crate::{context::Context, variable::{stack::{Stack, VariableMap}, values::VariableValue, Variable}};
 use operations::*;
 
 #[derive(Debug,Clone)]
@@ -139,33 +139,6 @@ impl Event {
             format!(":\n{ind_str}{}", ev_strs.join(&format!("\n{ind_str}")))
         };
         format!("event {} with params ({}){}", self.id, params.join(","), events)
-    }
-
-    fn apply_iterators(&self, iterators: &Vec<usize>, context: &mut Context, scope: &mut Stack) -> Vec<Vec<Variable>> {
-        if iterators.is_empty() {
-            return vec![self.params.clone()];
-        }
-        let param_values = self.get_param_values(context, scope);
-        let main_iterator_id = iterators[0];
-        let VariableValue::Vec(v) = &param_values[main_iterator_id] else {
-            panic!("error: {:?} is not an iterator", self.params[main_iterator_id]);
-        };
-        let len = v.len();
-        let mut ret = vec![vec![];len];
-        for iteration in 0..len {
-            for var_id in 0..param_values.len() {
-                let val = if iterators.contains(&var_id) {
-                    let VariableValue::Vec(v) = &param_values[var_id] else {
-                        panic!();
-                    };
-                    v[len % v.len()].clone()
-                } else {
-                    self.params[var_id].clone()
-                };
-                ret[iteration].push(val);
-            }
-        }
-        ret
     }
 
     fn get_param_values(&self, context: &mut Context, scope: &mut Stack) -> Vec<VariableValue> {

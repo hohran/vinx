@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt::Display};
 
-use crate::{context::{Context, Globals}, event::{component::Components, Event, Operations}, variable::stack::Stack};
+use crate::{context::Context, event::{component::Components, Event, Operations}, variable::stack::Stack};
 
 #[derive(Debug,Clone)]
 pub enum Timestamp {

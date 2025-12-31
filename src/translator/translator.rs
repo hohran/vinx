@@ -31,7 +31,7 @@ pub struct InnerTranslator<'a> {
     pub action_decision_automaton: Automaton,
     pub operations: Operations,
     pub _number_of_builtin_operations: usize,
-    pub in_component: bool,
+    // pub in_component: bool,
 }
 
 impl<'a> InnerTranslator<'a> {
@@ -239,7 +239,7 @@ pub fn parse(filepath: &str) -> (Stack,Components,Vec<Action>,Operations) {
         action_decision_automaton: aut,
         operations: Operations::new(),
         _number_of_builtin_operations: op_count,
-        in_component: false,
+        // in_component: false,
     };
     it.load(&root_node);
     it.get()
