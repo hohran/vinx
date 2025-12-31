@@ -5,11 +5,12 @@ use super::values::{Direction, VariableValue};
 #[macro_export]
 macro_rules! vtype {
     ( [ $($x:tt)+ ] ) => { VariableType::Vec(Box::new(vtype!($($x)+))) };
-    ( Label ) => { VariableType::Label };
+    ( String ) => { VariableType::String };
     ( Int ) => { VariableType::Int };
     ( Pos ) => { VariableType::Pos };
     ( Color ) => { VariableType::Color };
     ( Direction ) => { VariableType::Direction };
+    ( Column ) => { VariableType::Column };
     ( Component($i:expr) ) => { VariableType::Component($i) };
     ( Any ( $i:expr ) ) => { VariableType::Any($i) };
     ( ( $($x:tt)+ ) ) => { vtype!($($x)+) };
@@ -17,17 +18,16 @@ macro_rules! vtype {
 
 #[derive(Hash,Clone, Debug, Eq)]
 pub enum VariableType {
-    Label,   // helper type for translator
-    Int,   // maybe change to usize
+    Int,
     Pos,
-    // LeftRightPos,
-    // UpDownPos,
     Color,
+    String,
+    Effect,
     Direction,
-    /// Type for user defined structures
-    Component(usize),
     Vec(Box<VariableType>),
     Any(usize),
+    /// Type for user defined structures
+    Component(usize),
 }
 
 impl ToString for VariableType {
@@ -64,12 +64,13 @@ impl VariableType {
 
     pub fn default(&self) -> VariableValue {
         match &self {
-            VariableType::Vec(x) => { VariableValue::Vec(vec![x.default()]) }
+            VariableType::Vec(x) => { VariableValue::Vec(vec![x.default().to_var()]) }
             VariableType::Int => { VariableValue::Int(0) }
             VariableType::Pos => { VariableValue::Pos(0, 0) }
             VariableType::Direction => { VariableValue::Direction(Direction::Left) }
             VariableType::Color => { VariableValue::Color(Pixel::black()) }
-            VariableType::Label => { VariableValue::Label(String::new()) }
+            VariableType::String => { VariableValue::String("".to_string()) }
+            VariableType::Effect => { VariableValue::Effect(crate::variable::values::Effect::Blur) }
             VariableType::Any(x) => { VariableValue::Any(*x) }
             VariableType::Component(x) => { VariableValue::Component(*x) }
         }
@@ -308,14 +309,15 @@ mod tests {
 
     #[test]
     fn test_common_depth() {
-        let vt1 = vtype!(Any(1));
-        let vt2 = vtype!([Any(1)]);
-        let vt3 = vtype!([[Any(1)]]);
-        let vt4 = vtype!([[[Any(1)]]]);
-        assert_eq!(vt4.common_depth(&vt4), 0);
-        assert_eq!(vt4.common_depth(&vt3), 1);
-        assert_eq!(vt4.common_depth(&vt2), 2);
-        assert_eq!(vt4.common_depth(&vt1), 3);
+        let vt1 = vtype!(Any(0));
+        let vt2 = vtype!([Any(0)]);
+        let vt3 = vtype!([[Any(0)]]);
+        let vt4 = vtype!([[[Any(0)]]]);
+        let vt5 = vtype!([[[Any(1)]]]);
+        assert_eq!(vt5.common_depth(&vt4), 0);
+        assert_eq!(vt5.common_depth(&vt3), 1);
+        assert_eq!(vt5.common_depth(&vt2), 2);
+        assert_eq!(vt5.common_depth(&vt1), 3);
     }
 
     #[test]

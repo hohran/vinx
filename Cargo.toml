@@ -7,7 +7,9 @@ edition = "2024"
 cc="*"
 
 [dependencies]
+clap = { version = "4.5.43", features = ["derive"] }
 rsframe = { path = "../../ref/rsframe/rsframe" } # version = "0.1.9" }
-image = { version = "0.25.8" }
+# image = { version = "0.25.8" }
+rand = "0.8.5"
 tree-sitter = { version = "0.25.8" }
 tree-sitter-vinx = { path = "../../grammars/tree-sitter-vinx" }

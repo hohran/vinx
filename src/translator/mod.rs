@@ -2,19 +2,20 @@ extern crate tree_sitter;
 extern crate tree_sitter_vinx;
 
 mod automata;
-mod type_inference;
+mod type_constraints;
 mod translator;
 pub use translator::parse;
 mod builtins;
 mod component_class;
+mod operations;
+mod value;
 
-use crate::{event::variable::types::VariableType, vtype};
+use crate::{variable::types::VariableType, vtype};
 
 #[derive(Clone,Hash,Eq,PartialEq,Debug)]
 pub enum Word {
     Keyword(String),
     Type(VariableType),
-    Label,
 }
 
 impl Word {
@@ -47,7 +48,6 @@ impl Word {
 impl ToString for Word {
     fn to_string(&self) -> String {
         match self {
-            Word::Label => { "@".to_string() }
             Word::Keyword(k) => { k.clone() }
             Word::Type(t) => { t.to_string() }
         }
@@ -91,16 +91,19 @@ macro_rules! word {
     ( Component($i:expr) ) => { Word::Type(VariableType::Component($i)) };
     ( Any ( $i:expr ) ) => { Word::Type(VariableType::Any($i)) };
     ( ( $($x:tt)+ ) ) => { word!($($x)+) };
-    ( Label ) => { Word::Label };
+    ( String ) => { Word::Type(VariableType::String) };
     ( $x:ident ) => { Word::Keyword(stringify!($x).to_string()) };
     ( $x:expr ) => { Word::Keyword($x.to_string()) };
 }
 
 
-#[derive(Copy,Clone,Eq,PartialEq,Debug)]
+#[derive(Clone,Eq,PartialEq,Debug)]
 pub enum SequenceValue {
     Operation(usize),
     Component(usize),
+    Value(usize),  // TODO: this would be nicer to remove: operations will have a return value and it will
+            // be computed that way. potential problem is handling calling of operations in
+            // build time: could they draw?
 }
 
 #[macro_export]
@@ -122,13 +125,13 @@ mod tests {
         assert_eq!(word!(Direction),Word::Type(VariableType::Direction));
         assert_eq!(word!(Any(1)),Word::Type(VariableType::Any(1)));
         assert_eq!(word!([[Int]]),Word::Type(VariableType::Vec(Box::new(VariableType::Vec(Box::new(VariableType::Int))))));
-        assert_eq!(word!(Label),Word::Label);
+        assert_eq!(word!(String),Word::Type(VariableType::String));
         assert_eq!(word!(ahoj),Word::Keyword("ahoj".to_string()));
         assert_eq!(word!("ahoj"),Word::Keyword("ahoj".to_string()));
     }
 
     #[test]
     fn test_seq_macro() {
-        assert_eq!(seq!(rotate [Int] into Label "as" (Any(1))), vec![word!(rotate),word!([Int]),word!(into),word!(Label),word!("as"),word!(Any(1))]);
+        assert_eq!(seq!(rotate [Int] into "as" (Any(1))), vec![word!(rotate),word!([Int]),word!(into),word!("as"),word!(Any(1))]);
     }
 }

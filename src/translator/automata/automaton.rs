@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 
-use crate::{event::variable::types::VariableType, translator::{seq_to_str, type_inference::type_constraints::TypeConstraints}};
+use crate::{ translator::{seq_to_str, type_constraints::TypeConstraints}, variable::types::VariableType};
 
 use super::{super::{SequenceValue, Word}, linear_automaton::LinearAutomaton, state::State};
 
@@ -114,7 +114,7 @@ impl Automaton {
         let mut out = vec![];
         let w = &seq[0];
         if w.is_ambiguous() {
-            assert!(matches!(w, Word::Type(VariableType::Any(_))));
+            assert!(matches!(w, Word::Type(VariableType::Any(_))), "error: expected Any type, got {w:?}");
             let branches = self.states[start].get_type_transitions();
             for branch_word in branches {
                 let mut any_mapping_clone = any_mapping.clone();
@@ -173,7 +173,7 @@ mod tests {
     use super::{Automaton, LinearAutomaton, State};
     use super::Word;
     use super::SequenceValue;
-    use crate::event::variable::types::VariableType;
+    use crate::variable::types::VariableType;
     use crate::{seq,word};
 
     #[test]
@@ -256,22 +256,6 @@ mod tests {
     }
 
     #[test]
-    fn test_automaton_union_fails_on_any() {
-        let mut la1 = LinearAutomaton::from(&vec![
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Int),
-            Word::Keyword("b".to_string()),
-        ]);
-        la1.returns(SequenceValue::Operation(1));
-        let a = Automaton::from(la1);
-        assert_eq!(a.run(&vec![
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Any(1)),
-            Word::Keyword("b".to_string()),
-        ]), None);
-    }
-
-    #[test]
     fn test_automaton_union() {
         let mut la1 = LinearAutomaton::from(&vec![
             Word::Keyword("a".to_string()),
@@ -308,32 +292,18 @@ mod tests {
 
     #[test]
     fn test_automaton_priority_choice() {
-        let mut la1 = LinearAutomaton::from(&vec![
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Int),
-            Word::Keyword("b".to_string()),
-        ]);
+        let mut la1 = LinearAutomaton::from(&seq!(a Int b));
         la1.returns(SequenceValue::Operation(1));
-        let mut la2 = LinearAutomaton::from(&vec![
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Any(1)),
-            Word::Keyword("b".to_string()),
-        ]);
+        let mut la2 = LinearAutomaton::from(&seq!(a (Any(1)) b));
         la2.returns(SequenceValue::Operation(2));
         let mut a = Automaton::from(la1);
         assert_eq!(a.len(), 4);
         a.union(la2).unwrap();
         assert_eq!(a.len(), 6);
-        assert_eq!(a.run(&vec![
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Int),
-            Word::Keyword("b".to_string()),
-        ]), Some(&SequenceValue::Operation(1)));
-        assert_eq!(a.run(&vec![
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Any(1)),
-            Word::Keyword("b".to_string()),
-        ]), Some(&SequenceValue::Operation(2)));
+        assert_eq!(
+            a.run(&seq!(a Int b)),
+            Some(&SequenceValue::Operation(1))
+            );
     }
 
     #[test]
@@ -540,5 +510,15 @@ mod tests {
         }
         let paths = a.get_all_paths(&seq!(a (Any(0)) (Any(1)) (Any(1)) (Any(0))), 2);
         assert_eq!(paths.len(), 0);
+    }
+
+    #[test]
+    fn test_run() {
+        let mut la = LinearAutomaton::from(&seq!("move" Pos Direction "by" Int));
+        la.returns(SequenceValue::Operation(1));
+        let a = Automaton::from(la);
+        let s = seq!("move" (Any(1)) Direction "by" Int);
+        let x = a.run(&s);
+        assert_eq!(x.unwrap(), &SequenceValue::Operation(1));
     }
 }

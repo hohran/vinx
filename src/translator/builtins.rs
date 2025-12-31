@@ -1,78 +1,57 @@
-
-use crate::event::variable::types::VariableType;
+use crate::{seq, word, vtype};
+use crate::variable::types::VariableType;
 
 use super::{automata::{automaton::Automaton, linear_automaton::LinearAutomaton}, SequenceValue, Word};
 
-pub fn load_builtin_operations() -> (Automaton,usize) {
+pub fn load_builtin_operations(aut: &mut Automaton) -> usize {
     let builtins = [
         // move pos
-        vec![
-            Word::Keyword("restricted".to_string()),
-            Word::Keyword("move".to_string()),
-            Word::Type(VariableType::Pos),
-            Word::Type(VariableType::Direction),
-            Word::Keyword("by".to_string()),
-            Word::Type(VariableType::Int),
-        ],
+        seq!("restricted" "move" Pos Direction "by" Int),
         // move pos phase
-        vec![
-            Word::Keyword("move".to_string()),
-            Word::Type(VariableType::Pos),
-            Word::Type(VariableType::Direction),
-            Word::Keyword("by".to_string()),
-            Word::Type(VariableType::Int),
-        ],
-        // draw rect
-        vec![
-            Word::Keyword("draw".to_string()),
-            Word::Type(VariableType::Color),
-            Word::Keyword("rectangle".to_string()),
-            Word::Keyword("from".to_string()),
-            Word::Type(VariableType::Pos),
-            Word::Keyword("to".to_string()),
-            Word::Type(VariableType::Pos),
-        ],
+        seq!("move" Pos Direction "by" Int),
+        // draw rect outline
+        seq!("draw" Color "rectangle" "outline" "from" Pos "to" Pos),
         // activate
-        vec![
-            Word::Keyword("activate".to_string()),
-            Word::Label,
-        ],
+        seq!("activate" String),
         // deactivate
-        vec![
-            Word::Keyword("deactivate".to_string()),
-            Word::Label,
-        ],
+        seq!("deactivate" String),
         // set
-        vec![
-            Word::Keyword("set".to_string()),
-            Word::Type(VariableType::Any(1)),
-            Word::Keyword("to".to_string()),
-            Word::Type(VariableType::Any(1)),
-        ],
+        seq!("set" (Any(1)) "to" (Any(1))),
         // rotate vector
-        vec![
-            Word::Keyword("rotate".to_string()),
-            Word::Type(VariableType::Vec(Box::new(VariableType::Any(1)))),
-            Word::Type(VariableType::Direction),
-            Word::Keyword("by".to_string()),
-            Word::Type(VariableType::Int),
-        ],
+        seq!("rotate" [(Any(1))] Direction "by" Int),
         // top into
-        vec![
-            Word::Keyword("top".to_string()),
-            Word::Type(VariableType::Vec(Box::new(VariableType::Any(1)))),
-            Word::Keyword("into".to_string()),
-            Word::Type(VariableType::Any(1)),
-        ],
+        seq!("top" [(Any(1))] "into" (Any(1))),
+        // add to
+        seq!("add" Int "to" Int),
+        // draw rect
+        seq!("draw" Color "rectangle" "from" Pos "to" Pos),
+        // draw effect rect
+        seq!("draw" Effect "rectangle" "from" Pos "to" Pos),
+        // toggle activity
+        seq!("toggle" String),
         ];
-        let mut a = Automaton::new();
         let mut la;
         for (i,op) in builtins.iter().enumerate() {
             la = LinearAutomaton::from(op);
             la.returns(SequenceValue::Operation(i+1));
-            if let Err(e) = a.union(la) {
+            if let Err(e) = aut.union(la) {
                 panic!("error: {e}");
             }
         }
-        (a,builtins.len()+1)
+        builtins.len()+1
 }
+
+// pub fn load_builtin_values(aut: &mut Automaton) {
+//     let builtins = [
+//         seq!((Any(1))),
+//         seq!(column at Int),
+//     ];
+//     let mut la;
+//     for (i,seq) in builtins.iter().enumerate() {
+//         la = LinearAutomaton::from(seq);
+//         la.returns(SequenceValue::Value(i));
+//         if let Err(e) = aut.union(la) {
+//             panic!("error: {e}");
+//         }
+//     }
+// }

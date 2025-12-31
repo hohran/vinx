@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 
-use rsframe::vfx::video::{Frame, Video};
-
-use crate::event::variable::values::VariableValue;
+use crate::video::{Frame, Video};
+use crate::variable::values::VariableValue;
 
 pub type Globals = HashMap<String,VariableValue>;
 

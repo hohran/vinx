@@ -1,11 +1,22 @@
+use clap::Parser;
+use rsframe::vfx::video::{Video,Frame};
+
+/// Simple program to grep a file or stdin
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+pub struct Args {
+    /// path to video to process
+    pub video_path: String,
+
+    /// path to vinx program
+    pub program_path: String,
+}
+
 fn main() {
-    // let frame = vinx::video::Frame::from_img("test.png".to_string()).unwrap();
-    // let mut vid = vinx::Video::new(frame.width, frame.height);
-    // vid.append_still(frame, 100);
-    // vid.save("black.mp4".to_string(), 24, false, "ffmpeg");
-    // let mut actions = vinx::get_actions("".to_string());
-    // vinx::main_loop("white.mp4".to_string(), &mut actions);
-    // Frame::new(600, 400).save("test.png");
-    // vinx::translator::print_ast("in.vinx");
-    vinx::run("white.mp4".to_string(), "in.vinx".to_string());
+    let args = Args::parse();
+    vinx::run(args.video_path, args.program_path);
+    // let f = Frame::from_img("test.png".to_string()).unwrap();
+    // let mut vid = Video::new(f.width, f.height);
+    // vid.append_still(f, 300);
+    // vid.save("white-long.mp4".to_string(), 24, false, "ffmpeg");
 }

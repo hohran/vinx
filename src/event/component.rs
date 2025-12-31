@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{action::Action, context::{Context, Globals}};
-
-use super::{variable::values::VariableValue, Event};
+use crate::{action::Action, context::Globals, variable::values::VariableValue};
 
 pub type Components = HashMap<String,Component>;
 

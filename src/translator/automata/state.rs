@@ -2,7 +2,7 @@
 // this may be a problem because, we might want that one of the Any is bound and the other isnt
 use std::collections::HashMap;
 
-use crate::{event::variable::types::VariableType, translator::{get_bounded_value, Word}};
+use crate::{ translator::{get_bounded_value, Word}, variable::types::VariableType};
 
 
 pub struct State {

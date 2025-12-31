@@ -1,6 +1,7 @@
 use std::fmt::Display;
 
-use crate::event::variable::types::VariableType;
+use crate::variable::types::VariableType;
+
 
 #[derive(Debug,PartialEq, Eq, Clone)]
 pub struct TypeConstraints {
@@ -108,7 +109,7 @@ impl TypeConstraints {
     }
 
     pub fn intersect_var(&mut self, var_type: &VariableType, var_id: usize) -> bool {
-        assert!(var_id < self.types.len());
+        assert!(var_id < self.types.len(), "variable with invalid id {var_id}");
         let var = &self.types[var_id];
         if let Some(prod) = var.intersect(var_type) {
             println!("    {var:?} + {var_type:?} -> {prod:?}");

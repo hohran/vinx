@@ -1,1 +1,6 @@
 /target
+
+# resources
+*.png
+*.mp4
+*.mkv

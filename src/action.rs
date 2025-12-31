@@ -1,6 +1,6 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display};
 
-use crate::{context::{Context, Globals}, event::{component::Components, Event, Operations}};
+use crate::{context::{Context, Globals}, event::{component::Components, Event, Operations}, variable::stack::Stack};
 
 #[derive(Debug,Clone)]
 pub enum Timestamp {
@@ -16,6 +16,16 @@ pub struct Action {
     time_accumulator: Timestamp,
     events: Vec<Event>,
     onetime: bool,
+    activated: bool,
+}
+
+impl Display for Action {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let onetime_str = if self.onetime { "at" } else { "every" };
+        let act_str = match self.to_activate { Timestamp::Frame(x) => format!("{x} frames"), Timestamp::Millis(x) => format!("{x} ms"), };
+        let ev_strs: Vec<String> = self.events.iter().map(|x| x.to_string_with_indent(4)).collect();
+        write!(f, "{onetime_str} {act_str} do {{\n  {}\n}}", ev_strs.join("\n  "))
+    }
 }
 
 impl Action {
@@ -25,7 +35,7 @@ impl Action {
             Timestamp::Frame(t) => assert!(*t > 0, "to_activate must be greater than 0"),
             Timestamp::Millis(t) => assert!(*t > 0, "to_activate must be greater than 0"),
         }
-        Action { name, active, to_activate, time_accumulator, events, onetime }
+        Action { name, active, to_activate, time_accumulator, events, onetime, activated: false }
     }
 
     pub fn is_active(&self, action_activeness: &HashMap<String,bool>) -> bool {
@@ -34,6 +44,10 @@ impl Action {
 
     pub fn activate(&mut self) {
         self.active = true;
+    }
+
+    pub fn default_activeness(&self) -> bool {
+        self.active
     }
 
     pub fn clear_accumulator(&mut self) {
@@ -60,7 +74,6 @@ impl Action {
     }
 
     pub fn step(&mut self, millis: usize) {
-        if self.active == false && self.onetime == false { return; }
         match &mut self.time_accumulator {
             Timestamp::Frame(f) => {
                 *f += 1;
@@ -71,14 +84,14 @@ impl Action {
         }
     }
 
-    pub fn trigger(&mut self, context: &mut Context, scope: &mut Globals, components: &mut Components, action_activeness: &mut HashMap<String,bool>, operations: &Operations ) {
-        if self.active == false { return; }
+    pub fn trigger(&mut self, context: &mut Context, scope: &mut Stack, components: &mut Components, action_activeness: &mut HashMap<String,bool>, operations: &Operations ) {
+        if self.onetime && self.activated { return; }
         match (&self.to_activate, &self.time_accumulator) {
             (Timestamp::Frame(i), Timestamp::Frame(acc)) => {
                 if *acc >= *i {
                     self.process_events(context, scope, components, action_activeness, operations);
                     if self.onetime {
-                        self.deactivate();
+                        self.activated = true;
                     }
                     self.clear_accumulator();
                 }   
@@ -89,7 +102,7 @@ impl Action {
                 while tmp_acc >= tmp_i {
                     self.process_events(context, scope, components, action_activeness, operations);
                     if self.onetime {
-                        self.deactivate();
+                        self.activated = true;
                         break;
                     }
                     tmp_acc -= tmp_i;
@@ -100,9 +113,8 @@ impl Action {
         }
     }
 
-    /// FIXME the solution of returning action events may be way too inefficient
-    fn process_events(&mut self, context: &mut Context, scope: &mut Globals, components: &mut Components, action_activeness: &mut HashMap<String,bool>, operations: &Operations) {
-        for event in &self.events {
+    fn process_events(&mut self, context: &mut Context, scope: &mut Stack, components: &mut Components, action_activeness: &mut HashMap<String,bool>, operations: &Operations) {
+        for event in &mut self.events {
             event.process(context, scope, components, action_activeness, operations);
         }
     }
