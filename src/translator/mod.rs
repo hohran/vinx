@@ -117,6 +117,7 @@ macro_rules! seq {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::vtype;
     
     #[test]
     fn test_word_macro() {

@@ -28,6 +28,8 @@ pub enum VariableType {
     Any(usize),
     /// Type for user defined structures
     Component(usize),
+    /// Error type for type inference
+    None,
 }
 
 impl ToString for VariableType {
@@ -62,6 +64,9 @@ impl VariableType {
         }
     }
 
+    /// Returns default value for given type
+    /// Int -> Int(0)
+    /// Pos -> Pos(0,0)
     pub fn default(&self) -> VariableValue {
         match &self {
             VariableType::Vec(x) => { VariableValue::Vec(vec![x.default().to_var()]) }
@@ -73,6 +78,7 @@ impl VariableType {
             VariableType::Effect => { VariableValue::Effect(crate::variable::values::Effect::Blur) }
             VariableType::Any(x) => { VariableValue::Any(*x) }
             VariableType::Component(x) => { VariableValue::Component(*x) }
+            VariableType::None => { panic!("error: tried to instantiate None type") }
         }
     }
 
@@ -98,6 +104,7 @@ impl VariableType {
                 }
                 Some(t.clone())
             },
+            (VariableType::None, _) | (_, VariableType::None) => None,
             _ => {
                 if self == other { 
                     Some(self.clone()) 
@@ -113,17 +120,19 @@ impl VariableType {
     /// Int in Any(1) -> true
     /// Any(1) in Int -> false
     /// Any(1) in Any(2) -> true
-    /// [Int] in [Any(1)] -> true
-    /// [Int] in Any(1) -> true
+    /// \[Int] in \[Any(1)] -> true
+    /// \[Int] in Any(1) -> true
     pub fn is_subset_of(&self, other: &Self) -> bool {
-        if let VariableType::Any(_) = other { return true; }
+        if let VariableType::Any(_) = other { 
+            return true;
+        }
         match (self,other) {
             (VariableType::Vec(a),VariableType::Vec(b)) => a.is_subset_of(b),
             _ => false
         }
     }
 
-    /// for ambiguous types
+    /// Get binding of ambiguous types
     /// Any(1) -> 1
     /// [[Any(3)]] -> 3
     /// Int -> None
@@ -145,6 +154,11 @@ impl VariableType {
         }
     }
 
+    /// Set binding of ambigous type.
+    /// If the type is not ambiguous, nothing happens
+    /// Any(x) + 42 -> Any(42)
+    /// [[Any(y)]] + 1 -> [[Any(1)]]
+    /// Pos + 22 -> Pos
     pub fn set_binding(&mut self, x: usize) {
         match self {
             VariableType::Any(_) => *self = VariableType::Any(usize::min(x, usize::MAX-x)),
@@ -153,34 +167,42 @@ impl VariableType {
         }
     }
 
-    /// Any(1).set_binding_value(1, Int) -> Int
-    /// Any(1).set_binding_value(2, Int) -> Any(1)
-    /// [Any(1)].set_binding_value(1, Int) -> [Int]
-    pub fn set_binding_type(&mut self, binding: usize, new_value: &Self) {
+    /// If the binding number matches, switch ambiguous type for a new one
+    /// Any(1).set_binding_type(1, Int) -> Int
+    /// Any(1).set_binding_type(2, Int) -> Any(1)
+    /// [Any(1)].set_binding_type(1, Int) -> [Int]
+    pub fn set_binding_type(&mut self, binding: usize, new_type: &Self) {
         match self {
             VariableType::Any(x) => {
                 if *x != binding { return; }
-                *self = new_value.clone();
+                *self = new_type.clone();
             }
-            VariableType::Vec(v) => v.set_binding_type(binding, new_value),
+            VariableType::Vec(v) => v.set_binding_type(binding, new_type),
             _ => {}
         }
     }
 
+    /// strictly_matches(Any(0), Any(1)) -> false
+    /// normally Any(0) == Any(1) -> true
     pub fn strictly_matches(&self, other: &Self) -> bool {
         self == other && self.get_binding() == other.get_binding()
     }
 
-    pub fn common_depth(&self, other: &Self) -> usize {
+    /// Int -> 0
+    /// [Pos] -> 1
+    /// [[[Any(42)]]] -> 3
+    pub fn get_depth(&self) -> usize {
         let mut x = self;
         let mut depth = 0;
         loop {
-            if let VariableType::Any(_) = x { return depth; }
-            if let VariableType::Vec(nx) = x {
-                depth += 1;
-                x = nx;
-            } else {
-                panic!("error: {:?} is not compatible with {:?}", self, other);
+            match x {
+                VariableType::Vec(nx) => {
+                    depth += 1;
+                    x = nx;
+                }
+                _ => {
+                    return depth;
+                }
             }
         }
     }
@@ -308,16 +330,17 @@ mod tests {
     }
 
     #[test]
-    fn test_common_depth() {
+    fn test_get_depth() {
         let vt1 = vtype!(Any(0));
         let vt2 = vtype!([Any(0)]);
         let vt3 = vtype!([[Any(0)]]);
         let vt4 = vtype!([[[Any(0)]]]);
         let vt5 = vtype!([[[Any(1)]]]);
-        assert_eq!(vt5.common_depth(&vt4), 0);
-        assert_eq!(vt5.common_depth(&vt3), 1);
-        assert_eq!(vt5.common_depth(&vt2), 2);
-        assert_eq!(vt5.common_depth(&vt1), 3);
+        assert_eq!(vt1.get_depth(), 0);
+        assert_eq!(vt2.get_depth(), 1);
+        assert_eq!(vt3.get_depth(), 2);
+        assert_eq!(vt4.get_depth(), 3);
+        assert_eq!(vt5.get_depth(), 3);
     }
 
     #[test]

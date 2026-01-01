@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 
-use crate::{ translator::{seq_to_str, type_constraints::TypeConstraints}, variable::types::VariableType};
+use crate::{ translator::type_constraints::TypeConstraints, variable::types::VariableType};
 
 use super::{super::{SequenceValue, Word}, linear_automaton::LinearAutomaton, state::State};
 
@@ -171,6 +171,24 @@ mod tests {
     use super::SequenceValue;
     use crate::variable::types::VariableType;
     use crate::{seq,word};
+
+    impl Automaton {
+        pub fn from(la: LinearAutomaton) -> Self {
+            let mut states = vec![State::new()];
+            for t in &la.transitions {
+                let state_count = states.len();
+                let cur_state = state_count-1;
+                states.push(State::new());
+                states[cur_state].add_transition(t.clone(), state_count);
+            }
+            let mut return_values = HashMap::new();
+            return_values.insert(states.len()-1, la.return_value.expect("error: linear automaton has unset return value"));
+            Self { states, return_values }
+        }
+        pub fn len(&self) -> usize {
+            self.states.len()
+        }
+    }
 
     #[test]
     fn test_box_behavior() {
@@ -513,7 +531,7 @@ mod tests {
         let mut la = LinearAutomaton::from(&seq!("move" Pos Direction "by" Int));
         la.returns(SequenceValue::Operation(1));
         let a = Automaton::from(la);
-        let s = seq!("move" (Any(1)) Direction "by" Int);
+        let s = seq!("move" Pos Direction "by" Int);
         let x = a.run(&s);
         assert_eq!(x.unwrap(), &SequenceValue::Operation(1));
     }
