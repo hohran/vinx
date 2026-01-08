@@ -1,23 +1,18 @@
-[![Contributors][contributors-shield]][contributors-url]
-[![Forks][forks-shield]][forks-url]
-[![Stargazers][stars-shield]][stars-url]
-[![Issues][issues-shield]][issues-url]
-[![Unlicense License][license-shield]][license-url]
-[![LinkedIn][linkedin-shield]][linkedin-url]
+[![MIT License][license-shield]][license-url]
 
 <!-- PROJECT LOGO -->
 <br />
 <div align="center">
-  <a href="https://github.com/othneildrew/Best-README-Template">
-    <img src="images/logo.png" alt="Logo" width="80" height="80">
-  </a>
+  <!-- <a href="/blob/main/LICENSE.txt"> -->
+  <!--   <img src="images/logo.png" alt="Logo" width="80" height="80"> -->
+  <!-- </a> -->
 
   <h3 align="center">vinx</h3>
 
   <p align="center">
     A video editing programming language
     <br />
-    <a href="https://github.com/othneildrew/Best-README-Template"><strong>Explore the docs »</strong></a>
+    <a href="https://github.com/hohran/vinx"><strong>Explore the docs »</strong></a>
     <br />
     <br />
     <a href="https://github.com/hohran/vinx">View Demo</a>
@@ -51,12 +46,10 @@
   </ol>
 </details>
 
-
-
 <!-- ABOUT THE PROJECT -->
 ## About The Project
 
-[![Product Name Screen Shot][product-screenshot]](https://example.com)
+<!-- [![Product Name Screen Shot][product-screenshot]](https://example.com) -->
 
 *vinx* is a Rust-based video editing programming language.
 It's main design principle is to be easy to use and elegant.
@@ -125,8 +118,8 @@ Distributed under the MIT License. See `LICENSE.txt` for more information.
 
 <!-- MARKDOWN LINKS & IMAGES -->
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
-[license-shield]: https://img.shields.io/github/license/othneildrew/Best-README-Template.svg?style=for-the-badge
-[license-url]: https://github.com/othneildrew/Best-README-Template/blob/master/LICENSE.txt
+[license-shield]: https://img.shields.io/badge/build-passing-brightgreen?style=for-the-badge
+[license-url]: https://github.com/hohran/vinx/blob/main/LICENSE.txt
 <!-- [linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555 -->
 <!-- [linkedin-url]: https://linkedin.com/in/othneildrew -->
 <!-- [product-screenshot]: images/screenshot.png -->
