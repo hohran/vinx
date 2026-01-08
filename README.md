@@ -11,9 +11,9 @@
 
   <p align="center">
     A video editing programming language
-    <br />
-    <a href="https://github.com/hohran/vinx"><strong>Explore the docs »</strong></a>
-    <br />
+    <!-- <br /> -->
+    <!-- <a href="https://github.com/hohran/vinx"><strong>Explore the docs »</strong></a> -->
+    <!-- <br /> -->
     <br />
     <a href="https://github.com/hohran/vinx">View Demo</a>
     &middot;
