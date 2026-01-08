@@ -118,7 +118,7 @@ Distributed under the MIT License. See `LICENSE.txt` for more information.
 
 <!-- MARKDOWN LINKS & IMAGES -->
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
-[license-shield]: https://img.shields.io/badge/build-passing-brightgreen?style=for-the-badge
+[license-shield]: https://img.shields.io/badge/license-MIT-brightgreen?style=for-the-badge
 [license-url]: https://github.com/hohran/vinx/blob/main/LICENSE.txt
 <!-- [linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555 -->
 <!-- [linkedin-url]: https://linkedin.com/in/othneildrew -->
