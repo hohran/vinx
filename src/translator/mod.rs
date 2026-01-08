@@ -5,13 +5,21 @@ mod automata;
 mod type_constraints;
 mod translator;
 pub use translator::parse;
+use tree_sitter::Node;
 mod builtins;
 mod component_class;
 mod operations;
 mod value;
 mod actions;
+mod file_manager;
 
 use crate::variable::types::VariableType;
+use crate::vtype;
+
+/// Gets node children without comments
+fn get_children<'a>(node: &Node<'a>) -> Vec<Node<'a>> {
+    node.named_children(&mut node.walk()).filter(|n| n.kind() != "comment").collect()
+}
 
 #[derive(Clone,Hash,Eq,PartialEq,Debug)]
 pub enum Word {
@@ -22,6 +30,14 @@ pub enum Word {
 impl Word {
     pub fn is_type(&self) -> bool {
         matches!(self, Word::Type(_))
+    }
+
+    pub fn strictly_matches(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Word::Keyword(s1),Word::Keyword(s2)) => s1 == s2,
+            (Word::Type(t1),Word::Type(t2)) => t1.strictly_matches(t2),
+            _ => false,
+        }
     }
 
     pub fn is_ambiguous(&self) -> bool {
@@ -51,22 +67,6 @@ impl ToString for Word {
         match self {
             Word::Keyword(k) => { k.clone() }
             Word::Type(t) => { t.to_string() }
-        }
-    }
-}
-
-fn get_bounded_value(ambiguous_word: &Word, parsed_word: &Word) -> (usize,Word) {
-    match ambiguous_word {
-        Word::Type(VariableType::Any(binding)) => (*binding,parsed_word.clone()),
-        Word::Type(VariableType::Vec(ambi)) => {
-            if let Word::Type(VariableType::Vec(parsed)) = parsed_word {
-                get_bounded_value(&Word::Type(*ambi.clone()), &Word::Type(*parsed.clone()))
-            } else {
-                panic!("error: expected parsed_word to match ambiguous_word, found {:?} and {:?}", parsed_word, ambiguous_word);
-            }
-        }
-        _ => {
-            panic!("error: expected ambiguous_word to be ambiguous, got {:?}", ambiguous_word)
         }
     }
 }
@@ -134,6 +134,6 @@ mod tests {
 
     #[test]
     fn test_seq_macro() {
-        assert_eq!(seq!(rotate [Int] into "as" (Any(1))), vec![word!(rotate),word!([Int]),word!(into),word!("as"),word!(Any(1))]);
+        assert_eq!(seq!(rotate [Int] into "as" (Any(1)) String), vec![word!(rotate),word!([Int]),word!(into),word!("as"),word!(Any(1)),word!(String)]);
     }
 }

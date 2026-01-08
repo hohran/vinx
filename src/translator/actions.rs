@@ -1,14 +1,18 @@
 use tree_sitter::Node;
 
-use crate::{action::{Action, Timestamp}, child, event::Event, translator::{SequenceValue, Word, seq_to_str, translator::InnerTranslator}, variable::{Variable, stack::VariableMap}};
+use crate::{action::{Action, Timestamp}, event::Event, translator::{SequenceValue, Word, get_children, seq_to_str, translator::{Kind, Translator}}, variable::{Variable, stack::VariableMap}};
 
-
-impl<'a> InnerTranslator<'a> {
+impl Translator {
     pub fn get_action_definition(&mut self, node: &Node) {
-        let mut i = 0;
-        let label = self.get_action_label(node,&mut i);
-        let (active,onetime,timestamp,acc) = self.get_action_trigger(&child!(node[i]));
-        let events = self.get_action_events(&child!(node[i+1]));
+        let mut children = get_children(node);
+        let label = if children.len() == 3 {
+            let label_node = children.remove(0);
+            self.node_to_string(&label_node)
+        } else {
+            String::new()
+        };
+        let (active,onetime,timestamp,acc) = self.get_action_trigger(&children[0]);
+        let events = self.get_action_events(&children[1]);
         if !active && label.is_empty() {
             return;     // This action does not have to be processed, since there is no way to activate it
         }
@@ -18,30 +22,27 @@ impl<'a> InnerTranslator<'a> {
 
     fn get_action_trigger(&self, node: &Node) -> (bool, bool, Timestamp, Timestamp) {
         let mut i = 0;
-        let active = self.get_action_active(&child!(node[i]), &mut i);
-        let onetime = !self.get_action_repeats(&child!(node[i]), &mut i);
-        let (timestamp,acc) = self.get_action_timestamp_and_acc(&node, &mut i);
+        let children = get_children(node);
+        let active = self.get_action_active(&children[i], &mut i);
+        let onetime = !self.get_action_repeats(&children[i], &mut i);
+        let (timestamp,acc) = self.get_action_timestamp_and_acc(&children, &mut i);
         (active,onetime,timestamp,acc)
     }
 
-    fn get_action_label(&self, node: &Node, i: &mut usize) -> String {
-        let n = child!(node[*i]);
-        if n.kind() == "string" {
-            *i += 1;
-            self.node_to_string(&n)
-        } else {
-            "".to_string()
-        }
+    fn get_action_label(&self, node: &Node) -> String {
+        node.expect_kind("string");
+        self.node_to_string(&node)
     }
 
     fn get_action_events(&self, node: &Node) -> Vec<Event> {
         assert!(node.kind() == "events", "unexpected type of node {}", node.kind());
         let mut events = vec![];
-        if node.child_count() == 1 {
-            events.push(self.sequence_to_event(&child!(node[0])));
+        let children = get_children(node);
+        if children.len() == 1 {
+            events.push(self.sequence_to_event(&children[0]));
             return events;
         }
-        for e in node.named_children(&mut self.cursor.clone()) {
+        for e in children {
             events.push(self.sequence_to_event(&e));
         }
         events
@@ -51,7 +52,7 @@ impl<'a> InnerTranslator<'a> {
         assert!(node.kind() == "sequence", "unexpected type of node {}", node.kind());
         let mut params = vec![];
         let mut seq = vec![];
-        for n in node.children(&mut self.cursor.clone()) {
+        for n in get_children(node) {
             match n.kind() {
                 "keyword" => {
                     seq.push(Word::Keyword(self.text(&n).to_string()));
@@ -95,14 +96,14 @@ impl<'a> InnerTranslator<'a> {
         self.text(node) == "every"
     }
 
-    fn get_action_timestamp_and_acc(&self, node: &Node, i: &mut usize) -> (Timestamp, Timestamp) {
-        let q_node = child!(node[*i]);
+    fn get_action_timestamp_and_acc(&self, children: &[Node], i: &mut usize) -> (Timestamp, Timestamp) {
+        let q_node = children[*i];
         let quantifier = if q_node.kind() == "number" { *i += 1; self.node_to_int(&q_node) } else { 1 };
-        match self.text(&child!(node[*i])) {
+        match self.text(&children[*i]) {
             "frame" | "frames" => (Timestamp::Frame(quantifier),Timestamp::Frame(0)),
             "s" | "second" | "seconds" => (Timestamp::Millis(quantifier*1000),Timestamp::Millis(0)),
             "ms" | "millisecond" | "milliseconds" => (Timestamp::Millis(quantifier),Timestamp::Millis(0)),
-            _ => panic!("unexpected time unit {}", self.text(&child!(node[*i])))
+            _ => panic!("unexpected time unit {}", self.text(&children[*i]))
         }
     }
 }

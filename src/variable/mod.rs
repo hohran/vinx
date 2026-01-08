@@ -200,7 +200,6 @@ mod tests {
     fn test_variable_type_macro() {
         let t1 = vtype!(Int);
         assert_eq!(t1, VariableType::Int);
-
         let t2 = vtype!(String);
         assert_eq!(t2, VariableType::String);
         let t3 = vtype!(Pos);

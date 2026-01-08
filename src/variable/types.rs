@@ -89,6 +89,7 @@ impl VariableType {
     /// Any(1) + Any(2) -> Any(1)
     /// Any(1) + [Any(1)] -> None !!! think about it
     pub fn intersect(&self, other: &Self) -> Option<Self> {
+        println!("intersect {} + {}", self.to_string(), other.to_string());
         match (self,other) {
             (VariableType::Vec(x), VariableType::Vec(y)) => {
                 if let Some(t) = x.intersect(y) {
@@ -98,7 +99,8 @@ impl VariableType {
             },
             (VariableType::Any(x), t) | (t, VariableType::Any(x)) => {
                 if let Some(y) = t.get_binding() {
-                    if y == *x && self != other {
+                    if y == *x && self.get_depth() != other.get_depth() {
+                        println!("hereza");
                         return None;
                     }
                 }
@@ -189,8 +191,8 @@ impl VariableType {
     }
 
     /// Int -> 0
-    /// [Pos] -> 1
-    /// [[[Any(42)]]] -> 3
+    /// \[Pos] -> 1
+    /// \[\[\[Any(42)]]] -> 3
     pub fn get_depth(&self) -> usize {
         let mut x = self;
         let mut depth = 0;

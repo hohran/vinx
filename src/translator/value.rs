@@ -1,14 +1,14 @@
 use rsframe::vfx::video::Pixel;
 use tree_sitter::Node;
 
-use crate::{child, translator::{SequenceValue, translator::Kind}, variable::{Variable, values::{Direction, Effect, VariableValue}}};
+use crate::{translator::{SequenceValue, get_children, translator::Kind}, variable::{Variable, values::{Direction, Effect, VariableValue}}};
 
-use super::{translator::InnerTranslator, Word};
+use super::{translator::Translator, Word};
 
-impl<'a> InnerTranslator<'a> {
+impl Translator {
     pub fn get_variable_name(&self, node: &Node) -> Option<&str> {
         if node.kind() == "value" {
-            if child!(node[0]).kind() != "variable" {
+            if node.child(0).unwrap().kind() != "variable" {
                 return None;
             }
             return Some(self.text(node));
@@ -22,7 +22,7 @@ impl<'a> InnerTranslator<'a> {
 
     pub fn get_atomic_value(&self, node: &Node) -> VariableValue {
         node.expect_kind("value");
-        let val = child!(node[0]);
+        let val = node.child(0).unwrap();
         match val.kind() {
             "position" => self.pos_to_val(&val),
             "color" => self.color_to_val(&val),
@@ -33,7 +33,7 @@ impl<'a> InnerTranslator<'a> {
             "string" => VariableValue::String(self.node_to_string(&val)),
             "vector" => {
                 let mut v = vec![];
-                for elem in val.named_children(&mut self.cursor.clone()) {
+                for elem in get_children(&val) {
                     v.push(self.get_variable(&elem));
                 }
                 VariableValue::Vec(v)
@@ -47,12 +47,13 @@ impl<'a> InnerTranslator<'a> {
 
     pub fn get_sequence_value(&self, node: &Node) -> VariableValue {
         node.expect_kind("sequence");
-        if node.child_count() == 1 {
-            return self.get_atomic_value(&child!(node[0]));
+        let children = get_children(node);
+        if children.len() == 1 {
+            return self.get_atomic_value(&children[0]);
         }
         let mut seq = vec![];
         let mut params = vec![];
-        for n in node.children(&mut self.cursor.clone()) {
+        for n in children {
             match n.kind() {
                 "keyword" => {
                     seq.push(Word::Keyword(self.text(&n).to_string()));
@@ -74,7 +75,7 @@ impl<'a> InnerTranslator<'a> {
 
     fn get_variable(&self, node: &Node) -> Variable {
         node.expect_kind("value");
-        let val = child!(node[0]);
+        let val = node.child(0).unwrap();
         match val.kind() {
             "position" => self.pos_to_val(&val).to_var(),
             "color" => self.color_to_val(&val).to_var(),
@@ -88,7 +89,7 @@ impl<'a> InnerTranslator<'a> {
             "number" => VariableValue::Int(self.node_to_int(&val) as i32).to_var(),
             "vector" => {
                 let mut v = vec![];
-                for elem in val.named_children(&mut self.cursor.clone()) {
+                for elem in get_children(&val) {
                     v.push(self.get_variable(&elem));
                 }
                 VariableValue::Vec(v).to_var()
@@ -103,6 +104,7 @@ impl<'a> InnerTranslator<'a> {
         node.expect_kind("position");
         let x = node.named_child(0).expect("expected position to have 2 child nodes");
         let y = node.named_child(1).expect("expected position to have 2 child nodes");
+
         VariableValue::Pos(self.node_to_int(&x), self.node_to_int(&y))
     }
 
@@ -131,7 +133,7 @@ impl<'a> InnerTranslator<'a> {
         if node.kind() != "color" {
             panic!("expected color");
         }
-        let child = child!(node[0]);
+        let child = node.child(0).unwrap();
         if child.kind() == "color_name" {
             self.color_name_to_val(node)
         } else {

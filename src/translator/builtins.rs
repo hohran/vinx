@@ -30,28 +30,13 @@ pub fn load_builtin_operations(aut: &mut Automaton) -> usize {
         // toggle activity
         seq!("toggle" String),
         ];
-        let mut la;
-        for (i,op) in builtins.iter().enumerate() {
-            la = LinearAutomaton::from(op);
-            la.returns(SequenceValue::Operation(i+1));
-            if let Err(e) = aut.union(la) {
-                panic!("error: {e}");
-            }
+    let mut la;
+    let num_of_builtins = builtins.len();
+    for (i,op) in builtins.into_iter().enumerate() {
+        la = LinearAutomaton::new(op, SequenceValue::Operation(i+1));
+        if !aut.union(la) {
+            panic!("error: union did not create any new states");
         }
-        builtins.len()+1
+    }
+    num_of_builtins
 }
-
-// pub fn load_builtin_values(aut: &mut Automaton) {
-//     let builtins = [
-//         seq!((Any(1))),
-//         seq!(column at Int),
-//     ];
-//     let mut la;
-//     for (i,seq) in builtins.iter().enumerate() {
-//         la = LinearAutomaton::from(seq);
-//         la.returns(SequenceValue::Value(i));
-//         if let Err(e) = aut.union(la) {
-//             panic!("error: {e}");
-//         }
-//     }
-// }

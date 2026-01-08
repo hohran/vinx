@@ -1,15 +1,17 @@
 use tree_sitter::Node;
 
-use crate::{child, event::{Event, Operation}, translator::{SequenceValue, automata::linear_automaton::LinearAutomaton, translator::Kind, type_constraints::TypeConstraints}, variable::{Variable, stack::VariableMap, types::VariableType, values::VariableValue}};
+use crate::{event::{Event, Operation}, translator::{SequenceValue, automata::linear_automaton::LinearAutomaton, get_children, translator::Kind, type_constraints::TypeConstraints}, variable::{Variable, stack::VariableMap, types::VariableType, values::VariableValue}};
 
-use super::{seq_to_str, translator::InnerTranslator, Sequence, Word};
+use super::{translator::Translator, Sequence, Word};
 
 // type Interperation = Vec<TypeConstraints>;
 
-impl<'a> InnerTranslator<'a> {
+impl Translator {
     pub fn parse_operation(&mut self, node: &Node) {
-        let (signature, operands, iterators) = self.parse_lhs(&child!(node[0]));
-        let operation_node = child!(node[2]);
+        node.expect_kind("declaration");
+        let children = get_children(node);
+        let (signature, operands, iterators) = self.parse_lhs(&children[0]);
+        let operation_node = children[1];
         self.handle_operation(&operation_node, &operands, &signature, iterators);
     }
 
@@ -22,7 +24,7 @@ impl<'a> InnerTranslator<'a> {
         let mut operands = vec![];
         let mut has_main_iterator = false;
         let mut iterators: Vec<usize> = vec![];
-        for elem in lhs.children(&mut self.cursor.clone()) {
+        for elem in get_children(lhs) {
             match elem.kind() {
                 "keyword" => {
                     seq.push(Word::Keyword(self.text(&elem).to_string()));
@@ -32,12 +34,12 @@ impl<'a> InnerTranslator<'a> {
                     push_variable_into_signature(name, &mut seq, &mut operands);
                 }
                 "iterator" => {
-                    let var_node = child!(elem[1]);
+                    let var_node = elem.child_by_field_name("variable").expect("error: iterator without variable field");
                     var_node.expect_kind("variable");
                     let name = self.get_variable_name(&var_node).unwrap();  // variable always has a valid name
                     push_variable_into_signature(name, &mut seq, &mut operands);
                     let var_id = operands.len()-1;
-                    if elem.child_count() == 4 {    // main iterator
+                    if elem.child_by_field_name("main").is_some() {    // main iterator
                         assert!(has_main_iterator == false);
                         has_main_iterator = true;
                         iterators.insert(0, var_id);
@@ -57,7 +59,7 @@ impl<'a> InnerTranslator<'a> {
     /// for efficiency, it returns whether at least one interpretation was found
     fn get_event_interpretations(&self, node: &Node, var_count: usize, interpretations: &mut Vec<Vec<TypeConstraints>>) -> bool {
         let seq = self.get_sequence(node);
-        let ints = self.action_decision_automaton.get_all_paths(&seq, var_count);
+        let ints = self.action_decision_automaton.get_interpretations(&seq, var_count);
         if ints.is_empty() {
             return false;
         }
@@ -84,20 +86,20 @@ impl<'a> InnerTranslator<'a> {
         }
         // swap event signatures and create events
         let mut op_events = vec![];
-        for event in events_node.named_children(&mut self.get_cursor()) {
+        for event in get_children(events_node) {
             if event.kind() == "var_definition" {
                 continue;
             } else {
                 op_events.push(self.get_event(&event));
             }
         }
-        self.add_operation(&new_signature, operands.clone(), op_events, iterators, variables)
+        self.add_operation(new_signature, operands.clone(), op_events, iterators, variables)
     }
 
     fn get_event(&self, event_node: &Node) -> Event {
         let mut params = vec![];
         let mut seq = vec![];
-        for w in event_node.children(&mut self.get_cursor()) {
+        for w in get_children(event_node) {
             match w.kind() {
                 "keyword" => seq.push(Word::Keyword(self.text(&w).to_string())),
                 "value" => {
@@ -154,7 +156,7 @@ impl<'a> InnerTranslator<'a> {
         // get possible event interpretations
         let mut interpretations = vec![]; // store of sequences, and for each
         let mut variables = VariableMap::new();
-        for e in events_node.named_children(&mut events_node.walk()) {
+        for e in get_children(events_node) {
             if e.kind() == "var_definition" {
                 let (name,val) = self.get_var_definition(&e);
                 variables.insert(name,val);
@@ -174,12 +176,11 @@ impl<'a> InnerTranslator<'a> {
         self.globals.pop_layer();
     }
 
-    fn add_operation(&mut self, signature: &Vec<Word>, operands: Vec<String>, events: Vec<Event>, iterators: &Vec<usize>, variables: &VariableMap) -> bool {
-        let op_id = self._number_of_builtin_operations + self.operations.len();
+    fn add_operation(&mut self, signature: Vec<Word>, operands: Vec<String>, events: Vec<Event>, iterators: &Vec<usize>, variables: &VariableMap) -> bool {
+        let op_id = self._number_of_builtin_operations + self.operations.len() + 1;
         // println!("adding operation with signature {:?} as {op_id}", signature);
-        let mut la = LinearAutomaton::from(signature);
-        la.returns(SequenceValue::Operation(op_id));
-        if self.action_decision_automaton.union(la).is_err() {
+        let la = LinearAutomaton::new(signature, SequenceValue::Operation(op_id));
+        if !self.action_decision_automaton.union(la) {
             return false
         }
         self.operations.insert(op_id, Operation::new(op_id, operands, events, iterators.clone(), variables.clone()));
@@ -187,7 +188,7 @@ impl<'a> InnerTranslator<'a> {
     }
 
     pub fn is_builtin_operation(&self, id: usize) -> bool {
-        id < self._number_of_builtin_operations
+        id <= self._number_of_builtin_operations
     }
 }
 

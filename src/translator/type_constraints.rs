@@ -49,7 +49,7 @@ impl TypeConstraints {
 
     // Refine all types of with given binding with new_type.
     // Returns: Vector of all changed variables
-    fn update_binding(&mut self, binding: usize, new_type: VariableType) -> Vec<usize> {
+    pub fn update_binding(&mut self, binding: usize, new_type: VariableType) -> Vec<usize> {
         let mut out = vec![];
         for i in 0..self.types.len() {
             let vt = &mut self.types[i];
