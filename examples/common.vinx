@@ -1,0 +1,10 @@
+draw $c square at $p = {
+    $p2 = (0,0);
+    set $p2 to $p;
+    $s = 20;
+    move $p2 right by $s;
+    move $p2 down by $s;
+    draw $c rectangle from $p to $p2;
+}
+draw [$c] square at [$p*] = draw $c square at $p;
+draw [$c] square at [$p*] = draw $c square at $p;
