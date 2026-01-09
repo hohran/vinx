@@ -8,7 +8,7 @@ use super::{translator::Translator, Sequence, Word};
 
 impl Translator {
     pub fn parse_operation(&mut self, node: &Node) {
-        node.expect_kind("declaration");
+        node.expect_kind("declaration", self);
         let children = get_children(node);
         let (signature, operands, iterators) = self.parse_lhs(&children[0]);
         let operation_node = children[1];
@@ -35,7 +35,7 @@ impl Translator {
                 }
                 "iterator" => {
                     let var_node = elem.child_by_field_name("variable").expect("error: iterator without variable field");
-                    var_node.expect_kind("variable");
+                    var_node.expect_kind("variable", self);
                     let name = self.get_variable_name(&var_node).unwrap();  // variable always has a valid name
                     push_variable_into_signature(name, &mut seq, &mut operands);
                     let var_id = operands.len()-1;
