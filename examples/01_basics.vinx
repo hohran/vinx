@@ -1,0 +1,125 @@
+/*
+    Welcome to vinx
+    I am really happy that you got here
+
+    Let's start out with this example
+*/
+
+/** 1. Let's start by drawing out a rectangle **/
+
+/* This is called an action and it is composed of:
+v- trigger -v   
+every frame { 
+    v--------------- and events -----------------v
+    draw red rectangle from (100,100) to (200,200);
+} */
+
+every frame {
+    draw red rectangle from (100,100) to (200,200); // do not forget semicolons after each event :)
+}
+
+/* These are equivalent
+every frame draw red rectangle from (100,100) to (200,200);     // Since there is only one event, we can skip the braces, just like in C.
+every 1 frame ...                                               // We can specify a step in which it will trigger. The default is 1, so this is equivalent.
+every 1 frames ...                                              // "frame" and "frames" can be mixed, it is up to you, what is readable the most.
+*/
+
+/**********************************************/
+
+
+/** 2. Let's change some values **/
+
+/*
+   there are keywords and values
+   values can have different types, such as 
+    * Color - red, blue, green, ...
+    * Pos   - (100,100), (50,50)    // negative numbers are not supported yet
+    * Int   - 1, 2, 42, ...         // negative numbers also not supported
+    * Dir   - left, right, up, down
+    * Str   - "Hello", "world"
+    * Vec   - [1,2], [red, green]   // elements must be of the same type
+                                    // vectors can be nested
+
+   so in the event 
+    draw red rectangle from (100,100) to (200,200);
+   values are: red, (100,100), and (200,200)
+   the rest are keywords
+*/
+
+/*
+    For sharing, or changing values, there are also variables.
+    A variable always starts with $
+    you can define variables like this
+*/
+
+// $color = red;    // dont forget the semicolon
+// $p1 = (100,100);
+// $p2 = (200,200);
+
+/* when you use them, you need to also include the $ symbol */
+
+/* Your task is now to change the example at the top to use variables */
+/* But watch out, when you use something, it needs to be defined somewhere before */
+/* So make sure to put the variable definition at the top */
+
+/**********************************/
+
+
+/** 3. Other events **/
+
+/*
+    There are other events, such as:
+       move Pos Dir by Int      // for example:  move $p1 left by 2;
+       set Any(1) to Any(1)     // Any(x) means, that it can be any type, but it has to be the same type
+                                // example:     set $p1 to (150,150);
+       add Int to Int           // example:     add 5 to $i;
+       sub Int from Int         // example:     sub 5 from $i;
+*/
+
+/* If you are ever unsure about the events, just type `./<exec> --list` to the command line */
+
+/* Your task is to make the rectangle move */
+
+/**********************/
+
+
+/** 4. Working with actions **/
+
+/*
+    We said that action is defined as `every x frames { ... }`
+    But what if I told you, that this is not the only thing that you can do with them.
+*/
+
+/*
+    a)
+      Define action with a single trigger with: `at x frames { ... }`
+
+    b)
+      Name actions like this:
+        "action1"
+        every frame ...
+
+    c)
+      Make actions interact:
+      There are special events: 
+        - activate Str  // activate action with given name
+        - deactivate Str
+        - toggle Str    // if it is active, deactivate it, or vice versa
+
+    d)
+      Define actions that are deactivated by default with ! symbol:
+        "my deactivated function"
+        !every frame ...
+*/
+
+
+/* Your task now is to make the rectangle stop moving at some point and than start moving it again */
+
+/* To practice using variables and events, change its color, when it is not moving */
+
+/*****************************/
+
+
+/*
+    If you are interested in this program, or you find any inconvenience, let me know :)
+*/

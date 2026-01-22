@@ -1,0 +1,162 @@
+/*
+    Wow, you've made it this far
+    It seems that you are at least a bit interested in vinx
+
+    So to make your experience with it even better, I introduce to you a way to make custom events
+*/
+
+/*
+    You define a new event like this:
+    ```
+    do something with $x = {
+        event1;
+        ...
+        eventN;
+    }
+    ```
+
+    In this definition, $x is an argument.
+    It's type will be deduced from the latter usage.
+    So if it was used in `move $x left by 1`, it will be of type Pos
+
+    If the different types clash with each other, no new event is created and you will be greated with a (possibly) cryptic error
+
+    Also, if multiple interpretations are possible, this event is created for each one of them.
+*/
+
+/*
+    A bit of technical inside
+
+    When you call a certain event, what actually gets called is deduced from the types of the values
+    Most of the builtin functions don't fully overlap in their keywords, but you can make a new event that does so
+
+    If the new event has exactly the same signature as some that already exist, the new one is ignored
+    For example: `move $pos $dir by $step = move $pos $dir by $step;` has no effect
+*/
+
+/*
+    Iterating over a vector
+
+    ```
+    do something with [$x] = ...
+    ```
+    This will accept a vector, and for each its element, it will call the events
+    So: `do something with [1,2,3]`
+        would process the events with $x = 1, then with $x = 2, and so on
+
+    Let's try it out
+    Your task is to make multiple positions move
+        1. Define the new event
+        2. Use it on $positions
+*/
+
+$positions = [ (0,0),(50,50),(100,100),(150,150) ];
+$pos1 = (0,0);
+$pos2 = (300,300);
+
+"draw"
+every frame {
+    draw red rectangle from $pos1 to $pos2;
+}
+
+// helper event to rotate a vector
+rotate $vec = rotate $vec left by 1;
+
+"switch values"
+every 10 frames {
+    rotate $positions;
+    top $positions into $pos1;
+}
+
+/* 1. TODO: define your event here */
+
+"move"
+every frame {
+    move $pos2 right by 2;
+    move $pos1 right by 2;
+
+    // 2. TODO: use your event
+}
+
+
+/*
+    Multiple iterators
+
+    You can also specify events with multiple iterators in the same manner:
+    ```
+    draw $col rectangles from [$p1] to [$p2] =
+        draw $col rectangle from $p1 to $p2;
+    ```
+    In this case, the events will iterate through the whole [$p1]
+    But you may ask whether [$p2] needs to have the same number of elements
+    Well if it has more elements, they will be skipped and if it has less elements,
+    the iterator will recycle them
+
+    So for example `draw red rectangles from [(0,0),(1,1)] to [(10,10)]` would call the events with:
+        1) $p1 = (0,0) and $p2 = (10,10)
+        2) $p1 = (1,1) and $p2 = (10,10)
+
+    In this example, we say that [$p1] is the main iterator
+    And it is chosen as the main one simply because it comes first
+
+    You can try out this custom event
+    I would recommend changing up the values, so that you can see better what does it do
+*/
+
+/*
+    Selecting the main iterator
+
+    But what if you want to also iterate through the color for each new rectangle?
+    Since doing this
+    ```
+    draw [$col] rectangles from [$p1] to [$p2] =
+        draw $col rectangle from $p1 to $p2;
+    ```
+    would make [$col] the main iterator, calling this event with more positions would discard the ones unused.
+    For example:
+    `draw [red,green] rectangles from [$p1,$p2,$p3] to [$p4,$p5,$p6]`
+    would only draw out
+        1) red rectangle from $p1 to $p4
+        2) green rectangle from $p2 to $p5
+
+    Depending on what you plan to achieve with this event, this may be the correct behaviour
+    When creating such events, you have to always take into account what is the main iterator
+
+    If you want to set a different one without changing the signature, you can use the * symbol like this:
+    ```
+    draw [$col] rectangles from [$p1*] to [$p2] =
+        draw $col rectangle from $p1 to $p2;
+    ```
+    Now [$p1] is the main iterator so calling the event from before
+    `draw [red,green] rectangles from [$p1,$p2,$p3] to [$p4,$p5,$p6]`
+    would now draw out
+        1) red rectangle from $p1 to $p4
+        2) green rectangle from $p2 to $p5
+        3) red rectangle from $p3 to $p6
+*/
+
+/*
+    Local values
+
+    In your custom events, you can describe local variables in the same manner as normally
+    ```
+    do something = {
+        $p1 = (0,0);
+        $p2 = (0,0);
+        draw blue rectangle from $p1 to $p2;
+        move $p2 right by 2;
+    }
+    ```
+
+    This is especially useful, when you want specify only a portion of arguments and have the rest be computed
+
+    Note that these values are static, so at the second call of `do something` $p2 would be moved to the right
+
+    One downside is that these local values need to be set, so when you want the event to have multiple interpretations it can get in the way
+*/
+
+
+/*
+    Still not confused?
+    You're rockin'
+*/
