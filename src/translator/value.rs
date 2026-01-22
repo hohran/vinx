@@ -21,7 +21,7 @@ impl Translator {
     }
 
     pub fn get_atomic_value(&self, node: &Node) -> VariableValue {
-        node.expect_kind("value");
+        node.expect_kind("value", self);
         let val = node.child(0).unwrap();
         match val.kind() {
             "position" => self.pos_to_val(&val),
@@ -46,7 +46,7 @@ impl Translator {
 
 
     pub fn get_sequence_value(&self, node: &Node) -> VariableValue {
-        node.expect_kind("sequence");
+        node.expect_kind("sequence", self);
         let children = get_children(node);
         if children.len() == 1 {
             return self.get_atomic_value(&children[0]);
@@ -74,7 +74,7 @@ impl Translator {
     }
 
     fn get_variable(&self, node: &Node) -> Variable {
-        node.expect_kind("value");
+        node.expect_kind("value", self);
         let val = node.child(0).unwrap();
         match val.kind() {
             "position" => self.pos_to_val(&val).to_var(),
@@ -101,7 +101,7 @@ impl Translator {
     }
 
     fn pos_to_val(&self,node: &Node) -> VariableValue {
-        node.expect_kind("position");
+        node.expect_kind("position", self);
         let x = node.named_child(0).expect("expected position to have 2 child nodes");
         let y = node.named_child(1).expect("expected position to have 2 child nodes");
 
@@ -109,7 +109,7 @@ impl Translator {
     }
 
     fn direction_to_val(&self, node: &Node) -> VariableValue {
-        node.expect_kind("direction");
+        node.expect_kind("direction", self);
         match self.text(&node) {
             "left" => VariableValue::Direction(Direction::Left),
             "right" => VariableValue::Direction(Direction::Right),
@@ -120,7 +120,7 @@ impl Translator {
     }
 
     fn effect_to_val(&self, node: &Node) -> VariableValue {
-        node.expect_kind("effect");
+        node.expect_kind("effect", self);
         match self.text(&node) {
             "blurred" => VariableValue::Effect(Effect::Blur),
             "randomized" => VariableValue::Effect(Effect::Random),
@@ -169,7 +169,7 @@ impl Translator {
     }
 
     pub fn node_to_string(&self, node: &Node) -> String {
-        node.expect_kind("string");
+        node.expect_kind("string", self);
         let str = self.text(node);
         str[1..str.len()-1].to_string()
     }

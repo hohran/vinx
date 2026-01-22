@@ -1,24 +1,31 @@
-use tree_sitter::{Node, TreeCursor};
+use std::process::exit;
 
-use crate::{action::Action, event::{Operations, component::Components}, translator::{file_manager::{FileDependency, FileManager}, get_children, seq_to_str}, variable::{stack::Stack, values::VariableValue}};
+use colorized::Color;
+use tree_sitter::{Node, Range};
+
+use crate::{action::Action, event::{Operations, component::Components}, translator::{file_manager::FileManager, get_children, seq_to_str}, variable::{stack::Stack, values::VariableValue}};
 
 use super::{automata::automaton::Automaton, builtins::load_builtin_operations, Word};
 
-// #[macro_export]
-// macro_rules! child {
-//     ($node:ident[$idx:expr]) => {
-//         $node.child($idx).expect(&format!("failed to retrieve {}th child of node '{}'", $idx, $node))
-//     };
-// }
-
 pub trait Kind {
-    fn expect_kind(&self, expect: &str);
+    fn expect_kind(&self, expect: &str, translator: &Translator);
 }
 
 impl<'a> Kind for Node<'a> {
-    fn expect_kind(&self, expect: &str) {
+    fn expect_kind(&self, expect: &str, translator: &Translator) {
         let kind = self.kind();
-        assert_eq!(kind,expect, "error: expected node kind to be {expect}, got {kind} at {:?}", self.range());
+        if kind != expect {
+            let Some((start,end)) = translator.get_node_print_range(self) else {
+                println!("error: expected node type to be {}, got {}, in node:", expect.color(colorized::Colors::RedFg), kind.color(colorized::Colors::RedFg));
+                panic!();
+            };
+            println!("error: expected node type to be {}, got {}, in node:", expect.color(colorized::Colors::RedFg), kind.color(colorized::Colors::RedFg));
+            println!(" {}: {}{}{}", self.start_position().row.to_string().color(colorized::Colors::RedFg),
+                translator.text_from_to(start, self.start_byte()),
+                translator.text_from_to(self.start_byte(), self.end_byte()).color(colorized::Colors::RedFg),
+                translator.text_from_to(self.end_byte(), end));
+            exit(1);
+        }
     }
 }
 
@@ -30,7 +37,7 @@ pub struct Translator {
     pub action_decision_automaton: Automaton,
     pub operations: Operations,
     pub _number_of_builtin_operations: usize,
-    file_manager: FileManager,
+    pub file_manager: FileManager,
     // pub in_component: bool,
 }
 
@@ -40,6 +47,30 @@ impl Translator {
         let range = node.range();
         let text = self.file_manager.current_file_contents().expect("error: no file is currently processed");
         &text[range.start_byte..range.end_byte]
+    }
+
+    pub fn text_from_to(&self, start: usize, end: usize) -> &str {
+        let text = self.file_manager.current_file_contents().expect("error: no file is currently processed");
+        &text[start..end]
+    }
+
+    pub fn get_node_print_range(&self, node: &Node) -> Option<(usize,usize)> {
+        let Some(cont) = self.file_manager.current_file_contents() else {
+            return None;
+        };
+        
+        let range = node.range();
+        let node_start = range.start_byte;
+        let print_start = node_start.saturating_sub(range.start_point.column);
+        let mut node_end = range.end_byte;
+        let cont_bytes = cont.as_bytes();
+        for i in node_end..cont_bytes.len() {
+            if cont_bytes[i] == 10 {    // newline value
+                node_end = i;
+                break;
+            }
+        }
+        Some((print_start,node_end))
     }
 
     /// transforms into owned Translator
@@ -82,16 +113,10 @@ impl Translator {
                 }
             }
         }
-        let seqs = self.action_decision_automaton.get_all_sequences();
-        println!("operations:");
-        for (seq,sv) in seqs {
-            println!("{} -> {:?}",seq_to_str(&seq),sv);
-        }
-        println!();
     }
 
     pub fn get_sequence(&self, node: &Node) -> Vec<Word> {
-        node.expect_kind("sequence");
+        node.expect_kind("sequence", self);
         let mut seq = vec![];
         for n in get_children(node) {
             match n.kind() {
@@ -109,7 +134,7 @@ impl Translator {
     }
 
     pub fn get_var_definition(&mut self, node: &Node) -> (String,VariableValue) {
-        node.expect_kind("var_definition");
+        node.expect_kind("var_definition", self);
         let value = self.get_sequence_value(&node.child_by_field_name("rhs").unwrap());
         let name = self.text(&node.child_by_field_name("lhs").unwrap()).to_string();
         // println!("assigning {} to {name}",value.to_string());
@@ -120,7 +145,7 @@ impl Translator {
 
 pub fn parse(filepath: &str) -> (Stack,Components,Vec<Action>,Operations) {
     let mut parser = tree_sitter::Parser::new();
-    parser.set_language(&tree_sitter_vinx::LANGUAGE.into()).expect("Could not load vinx grammar");
+    parser.set_language(&tree_sitter_vinx::LANGUAGE.into()).expect("error: could not load vinx grammar");
     let mut aut = Automaton::new();
     let op_count = load_builtin_operations(&mut aut);
     let mut it = Translator {
@@ -135,7 +160,12 @@ pub fn parse(filepath: &str) -> (Stack,Components,Vec<Action>,Operations) {
         // in_component: false,
     };
     it.load_file(filepath);
-    // it.load_from_node(&root_node);
+    // let seqs = it.action_decision_automaton.get_all_sequences();
+    // println!("operations:");
+    // for (seq,_) in seqs {
+    //     println!("{}",seq_to_str(&seq));
+    // }
+    // println!();
     it.get()
 }
 

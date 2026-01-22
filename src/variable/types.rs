@@ -10,7 +10,6 @@ macro_rules! vtype {
     ( Pos ) => { VariableType::Pos };
     ( Color ) => { VariableType::Color };
     ( Direction ) => { VariableType::Direction };
-    ( Column ) => { VariableType::Column };
     ( Component($i:expr) ) => { VariableType::Component($i) };
     ( Any ( $i:expr ) ) => { VariableType::Any($i) };
     ( ( $($x:tt)+ ) ) => { vtype!($($x)+) };
@@ -34,7 +33,18 @@ pub enum VariableType {
 
 impl ToString for VariableType {
     fn to_string(&self) -> String {
-        format!("{:?}",self)
+        match self {
+            VariableType::Int => "Int".to_string(),
+            VariableType::Pos => "Pos".to_string(),
+            VariableType::Color => "Color".to_string(),
+            VariableType::Effect => "Effect".to_string(),
+            VariableType::Direction => "Dir".to_string(),
+            VariableType::String => "Str".to_string(),
+            VariableType::Any(x) => format!("Any({})",x.to_string()),
+            VariableType::Vec(x) => format!("[{}]",x.to_string()),
+            VariableType::Component(x) => format!("Component({})",x.to_string()),
+            VariableType::None => "None".to_string(),
+        }
     }
 }
 
@@ -89,7 +99,7 @@ impl VariableType {
     /// Any(1) + Any(2) -> Any(1)
     /// Any(1) + [Any(1)] -> None !!! think about it
     pub fn intersect(&self, other: &Self) -> Option<Self> {
-        println!("intersect {} + {}", self.to_string(), other.to_string());
+        // println!("intersect {} + {}", self.to_string(), other.to_string());
         match (self,other) {
             (VariableType::Vec(x), VariableType::Vec(y)) => {
                 if let Some(t) = x.intersect(y) {
@@ -100,7 +110,6 @@ impl VariableType {
             (VariableType::Any(x), t) | (t, VariableType::Any(x)) => {
                 if let Some(y) = t.get_binding() {
                     if y == *x && self.get_depth() != other.get_depth() {
-                        println!("hereza");
                         return None;
                     }
                 }

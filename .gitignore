@@ -11,3 +11,4 @@ debug
 *.png
 *.mp4
 *.mkv
+!examples/blank.mp4

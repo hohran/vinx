@@ -13,13 +13,13 @@
     A video editing programming language
     <!-- <br /> -->
     <!-- <a href="https://github.com/hohran/vinx"><strong>Explore the docs »</strong></a> -->
-    <!-- <br /> -->
+    <br />
     <br />
     <a href="https://github.com/hohran/vinx">View Demo</a>
     &middot;
-    <a href="https://github.com/hohran/vinx/issues/new?labels=bug&template=bug-report---.md">Report Bug</a>
+    <a href="https://github.com/hohran/vinx/issues/new?template=bug_report.md">Report Bug</a>
     &middot;
-    <a href="https://github.com/hohran/vinx/issues/new?labels=enhancement&template=feature-request---.md">Request Feature</a>
+    <a href="https://github.com/hohran/vinx/issues/new?template=feature_request.md">Request Feature</a>
   </p>
 </div>
 
@@ -67,6 +67,12 @@ Install these technologies for this project to work properly:
 * [FFmpeg](https://ffmpeg.org/download.html)
 * [Rust](https://rust-lang.org/learn/get-started/)
 
+Check installation with:
+```bash
+ffmpeg
+cargo --version
+```
+
 ### Installation
 
 I am keeping this project still very personal, so it is not submitted anywhere.
@@ -100,7 +106,7 @@ TODO
 Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
 
 But, **I do not have much experience with managing open-source projects**.
-So this is a check-list for contributions stolen from [https://github.com/othneildrew/Best-README-Template](Best-README-Template).
+So this is a check-list for contributions stolen from [Best-README-Template](https://github.com/othneildrew/Best-README-Template).
 
 If you have a suggestion that would make vinx better, please fork the repo and create a pull request. You can also simply open an issue with the tag "enhancement".
 Don't forget to give the project a star! Thanks again!

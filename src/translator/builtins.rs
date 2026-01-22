@@ -16,11 +16,11 @@ pub fn load_builtin_operations(aut: &mut Automaton) -> usize {
         // deactivate
         seq!("deactivate" String),
         // set
-        seq!("set" (Any(1)) "to" (Any(1))),
+        seq!("set" (Any(0)) "to" (Any(0))),
         // rotate vector
-        seq!("rotate" [(Any(1))] Direction "by" Int),
+        seq!("rotate" [(Any(0))] Direction "by" Int),
         // top into
-        seq!("top" [(Any(1))] "into" (Any(1))),
+        seq!("top" [(Any(0))] "into" (Any(0))),
         // add to
         seq!("add" Int "to" Int),
         // draw rect
@@ -29,6 +29,8 @@ pub fn load_builtin_operations(aut: &mut Automaton) -> usize {
         seq!("draw" Effect "rectangle" "from" Pos "to" Pos),
         // toggle activity
         seq!("toggle" String),
+        // sub
+        seq!("sub" Int "from" Int),
         ];
     let mut la;
     let num_of_builtins = builtins.len();

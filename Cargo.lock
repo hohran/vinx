@@ -257,6 +257,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b05b61dc5112cbb17e4b6cd61790d9845d13888356391624cbe7e41efeac1e75"
 
 [[package]]
+name = "colorized"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "739281952453521b532f476b5f8b77c4b16d5ab2a248466c8dc153b3f85d6564"
+
+[[package]]
 name = "console"
 version = "0.15.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1222,6 +1228,8 @@ checksum = "c4013970217383f67b18aef68f6fb2e8d409bc5755227092d32efb0422ba24b8"
 [[package]]
 name = "tree-sitter-vinx"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "242fc0eb3ca430d4fcf1711733ac6749ec4250ef8ec6b22550cb1e8c88792a78"
 dependencies = [
  "cc",
  "tree-sitter-language",
@@ -1268,6 +1276,7 @@ version = "0.1.0"
 dependencies = [
  "cc",
  "clap",
+ "colorized",
  "rand",
  "rsframe",
  "tree-sitter",

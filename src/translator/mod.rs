@@ -14,7 +14,7 @@ mod actions;
 mod file_manager;
 
 use crate::variable::types::VariableType;
-use crate::vtype;
+// use crate::vtype;
 
 /// Gets node children without comments
 fn get_children<'a>(node: &Node<'a>) -> Vec<Node<'a>> {
@@ -73,12 +73,12 @@ impl ToString for Word {
 
 pub type Sequence = Vec<Word>;
 fn seq_to_str(seq: &Sequence) -> String {
-    let mut ret = "[".to_string();
+    let mut ret = "".to_string();
     for w in seq {
-        ret.push(' ');
         ret.push_str(&w.to_string());
+        ret.push(' ');
     }
-    ret.push_str(" ]");
+    ret.pop();
     ret
 }
 
@@ -96,7 +96,6 @@ macro_rules! word {
     ( $x:ident ) => { Word::Keyword(stringify!($x).to_string()) };
     ( $x:expr ) => { Word::Keyword($x.to_string()) };
 }
-
 
 #[derive(Clone,Eq,PartialEq,Debug)]
 pub enum SequenceValue {

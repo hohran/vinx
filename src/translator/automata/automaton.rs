@@ -127,7 +127,6 @@ impl Automaton {
     // }
 
     pub fn get_interpretations(&self, seq: &Vec<Word>, var_count: usize) -> Vec<TypeConstraints> {
-        println!("get_interpretations");
         self.get_interpretations_from(seq, 0, TypeConstraints::new(var_count), &mut HashMap::new())
     }
 
@@ -139,10 +138,8 @@ impl Automaton {
         let mut out = vec![];
         let w = &seq[0];
         if w.is_ambiguous() {
-            println!("hre");
             let branches = self.states[start].get_type_transitions();
             for branch_word in branches {
-                println!("trying: {}", branch_word.to_string());
                 let mut bind_mapping_clone = bind_mapping.clone();
                 let mut constraint_clone = current_type_constraints.clone();
                 if let Some(n) = self.states[start].get_exact_transition(branch_word) {
@@ -152,7 +149,6 @@ impl Automaton {
                     if let Some(var_id) = w.get_binding() {
                         let var_depth = w.get_variable_type().unwrap().get_depth();
                         if !constraint_clone.intersect_var(&branch_word.get_variable_type().unwrap().unwrap_depth(var_depth).with_inverted_binding(), var_id) {
-                            println!("failed to intersect at {var_id} with {}", branch_word.to_string());
                             continue;
                         }
                     }
@@ -161,46 +157,8 @@ impl Automaton {
             }
             return out;
         } else {
-            println!("{}", w.to_string());
             if let Some(n) = self.states[start].get_transition(w, bind_mapping) {
                 return self.get_interpretations_from(&seq[1..], n, current_type_constraints, bind_mapping);
-            } else {
-                return vec![];
-            }
-        }
-    }
-
-    /// TODO -> change into refine_type_constraints(&self, seq, type_constraints) -> Vec<TypeConstraints>
-    pub fn get_all_matching_paths(&self, seq: &Vec<Word>, var_count: usize) -> Vec<TypeConstraints> {
-        self.get_all_matching_paths_from(seq, 0, TypeConstraints::new(var_count), &mut HashMap::new())
-    }
-
-    fn get_all_matching_paths_from(&self, seq: &[Word], start: StateId, mut current_type_constraints: TypeConstraints, bind_mapping: &mut HashMap<usize,VariableType>) -> Vec<TypeConstraints> {
-        if seq.len() == 0 {
-            current_type_constraints.refresh_bindings();
-            return vec![current_type_constraints];
-        }
-        let mut out = vec![];
-        let w = &seq[0];
-        if w.is_ambiguous() {
-            assert!(matches!(w, Word::Type(VariableType::Any(_))), "error: expected Any type, got {w:?}");
-            let branches = self.states[start].get_type_transitions();
-            for branch_word in branches {
-                let mut bind_mapping_clone = bind_mapping.clone();
-                let mut constraint_clone = current_type_constraints.clone();
-                if let Some(n) = self.states[start].get_transition(branch_word, &mut bind_mapping_clone) { // we expect only ambi types of Any
-                    if let Some(var_id) = w.get_binding() {
-                        if !constraint_clone.intersect_var(&branch_word.get_variable_type().unwrap().with_inverted_binding(), var_id) {
-                            return vec![];
-                        }
-                    }
-                    out.append(&mut self.get_all_matching_paths_from(&seq[1..], n, constraint_clone, &mut bind_mapping_clone));
-                }
-            }
-            return out;
-        } else {
-            if let Some(n) = self.states[start].get_transition(w, bind_mapping) {
-                return self.get_all_matching_paths_from(&seq[1..], n, current_type_constraints, bind_mapping);
             } else {
                 return vec![];
             }

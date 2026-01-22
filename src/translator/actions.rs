@@ -1,3 +1,6 @@
+use std::process::exit;
+
+use colorized::Color;
 use tree_sitter::Node;
 
 use crate::{action::{Action, Timestamp}, event::Event, translator::{SequenceValue, Word, get_children, seq_to_str, translator::{Kind, Translator}}, variable::{Variable, stack::VariableMap}};
@@ -29,13 +32,8 @@ impl Translator {
         (active,onetime,timestamp,acc)
     }
 
-    fn get_action_label(&self, node: &Node) -> String {
-        node.expect_kind("string");
-        self.node_to_string(&node)
-    }
-
     fn get_action_events(&self, node: &Node) -> Vec<Event> {
-        assert!(node.kind() == "events", "unexpected type of node {}", node.kind());
+        node.expect_kind("events", self);
         let mut events = vec![];
         let children = get_children(node);
         if children.len() == 1 {
@@ -71,7 +69,12 @@ impl Translator {
             }
         }
         // println!("{:?}",seq_to_str(&seq));
-        let sv = self.action_decision_automaton.run(&seq).expect(&format!("error: invalid sequence: {}", seq_to_str(&seq)));
+        let Some(sv) = self.action_decision_automaton.run(&seq) else {
+            eprintln!("{} invalid sequence: {}", "error:".color(colorized::Colors::RedFg), seq_to_str(&seq));
+            eprintln!("{}:", self.file_manager.current_file().expect("error: could not retrieve file"));
+            eprintln!(" line {}: {}", node.start_position().row+1, self.text(node));
+            exit(1);
+        };
         if let SequenceValue::Operation(id) = sv {
                 if self.is_builtin_operation(*id) {
                     Event::new(*id, params, vec![], VariableMap::new())

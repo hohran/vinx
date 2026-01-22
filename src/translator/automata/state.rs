@@ -184,7 +184,6 @@ impl State {
                 if bind_mapping.get(&binding).is_none() {
                     let depth = wt.get_depth();
                     let new_binding_value = t.get_variable_type().unwrap().unwrap_depth(depth);
-                    println!("{binding} -> {new_binding_value:?}");
                     bind_mapping.insert(binding,new_binding_value);
                 }
             }
