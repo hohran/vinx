@@ -1,4 +1,5 @@
-$v = 1;
+$v = 1; // velocity
+// -- row definition --
 $r1 = [
     (0,0),
     (50,0),
@@ -115,19 +116,32 @@ $rows = [$r1,$r2,$r3,$r4,$r5,$r6,$r7,$r8];
 
 load "common";
 
+// every odd row will have red/green squares
+$odd_row_colors = [red,green];
+// every even row will have blue/purple squares
+$even_row_colors = [blue,purple];
+
 "draw"
 every frame {
-    draw [[red,green],[blue,purple]] square at $rows;
+    // this function is defined in common.vinx
+    draw [$odd_row_colors,$even_row_colors] square at $rows;
 }
 
+// function to move whole row
 move [$p] $d by $s = move $p $d by $s;
+// ** described bellow
 move [$p] [$d] by [$s] = move $p $d by $s;
 
 "move"
 every frame {
+    // **
+    // first row  -> right by $v
+    // second row -> left by 2
+    // third row  -> right by 3
     move $rows [right,left] by [$v,2,3];
 }
 
 every 10 frames {
+    // make some rows accelerate
     add 2 to $v;
 }
