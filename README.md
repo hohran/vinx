@@ -24,27 +24,27 @@
 </div>
 
 <!-- TABLE OF CONTENTS -->
-<details>
-  <summary>Table of Contents</summary>
-  <ol>
-    <li>
-      <a href="#about-the-project">About The Project</a>
-    </li>
-    <li>
-      <a href="#getting-started">Getting Started</a>
-      <ul>
-        <li><a href="#prerequisites">Prerequisites</a></li>
-        <li><a href="#installation">Installation</a></li>
-      </ul>
-    </li>
-    <li><a href="#usage">Usage</a></li>
-    <!-- <li><a href="#roadmap">Roadmap</a></li> -->
-    <li><a href="#contributing">Contributing</a></li>
-    <li><a href="#license">License</a></li>
-    <!-- <li><a href="#contact">Contact</a></li> -->
-    <!-- <li><a href="#acknowledgments">Acknowledgments</a></li> -->
-  </ol>
-</details>
+<!-- <details> -->
+<!--   <summary>Table of Contents</summary> -->
+<!--   <ol> -->
+<!--     <li> -->
+<!--       <a href="#about-the-project">About The Project</a> -->
+<!--     </li> -->
+<!--     <li> -->
+<!--       <a href="#getting-started">Getting Started</a> -->
+<!--       <ul> -->
+<!--         <li><a href="#prerequisites">Prerequisites</a></li> -->
+<!--         <li><a href="#installation">Installation</a></li> -->
+<!--       </ul> -->
+<!--     </li> -->
+<!--     <li><a href="#usage">Usage</a></li> -->
+<!--     <!-- <li><a href="#roadmap">Roadmap</a></li> --> -->
+<!--     <li><a href="#contributing">Contributing</a></li> -->
+<!--     <li><a href="#license">License</a></li> -->
+<!--     <!-- <li><a href="#contact">Contact</a></li> --> -->
+<!--     <!-- <li><a href="#acknowledgments">Acknowledgments</a></li> --> -->
+<!--   </ol> -->
+<!-- </details> -->
 
 <!-- ABOUT THE PROJECT -->
 ## About The Project
@@ -79,12 +79,32 @@ I am keeping this project still very personal, so it is not submitted anywhere.
 For the time being.
 
 1. Install the dependencies
-2. Build this repo from source
+2. Build this repo from source with
+```bash
+cargo build --release
+```
+3. Use the executable found in `target/release/vinx`
 
 <!-- USAGE EXAMPLES -->
 ## Usage
 
-TODO
+```bash
+Usage: vinx [OPTIONS] <VIDEO_PATH> <PROGRAM_PATH> [OUTPUT_PATH]
+
+Arguments:
+  [VIDEO_PATH]    path to video to process; it can be in most of the traditional formats
+  [PROGRAM_PATH]  path to vinx program, usually with .vinx suffix
+  [OUTPUT_PATH]   path to the output; defaults to "out.mp4"
+
+Options:
+  -l, --list     list all possible events
+  -h, --help     Print help
+  -V, --version  Print version
+```
+
+See `examples/` to have a nice walkthrough for all the features.
+
+You can then start to write your own `.vinx` files.
 <!-- Use this space to show useful examples of how a project can be used. Additional screenshots, code examples and demos work well in this space. You may also link to more resources. -->
 <!---->
 <!-- _For more examples, please refer to the [Documentation](https://example.com)_ -->
