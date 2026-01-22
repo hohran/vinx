@@ -10,6 +10,7 @@ pub mod context;
 pub mod video;
 pub mod translator;
 pub mod variable;
+// pub mod error;
 
 fn get_action_activeness(actions: &Vec<action::Action>) -> HashMap<String,bool> {
     let mut action_activeness: HashMap<String,bool> = HashMap::new();
@@ -23,7 +24,7 @@ fn get_action_activeness(actions: &Vec<action::Action>) -> HashMap<String,bool> 
     action_activeness
 }
 
-pub fn run(media_file: String, command_file: String) {
+pub fn run(media_file: String, command_file: String, output_path: String) {
     let (mut globals, mut components, mut actions, operations) = parse(&command_file);
     // println!("--- actions ---");
     // for op in actions.iter() {
@@ -50,7 +51,8 @@ pub fn run(media_file: String, command_file: String) {
         // c.step(1, &mut context);
     }
     let video = context.get_video();
-    video.save("out.mkv".to_string(), 24, false, "ffmpeg");
+    video.save(output_path.to_string(), 24, false, "ffmpeg");
+    eprintln!("Output saved as {output_path}");
 }
 
 pub fn preprocess(_video: &mut Video) {
