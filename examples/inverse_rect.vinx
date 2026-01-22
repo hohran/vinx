@@ -7,7 +7,7 @@ draw $c $w wide square at $p = {
     draw $c rectangle from $p to $p2;
 }
 
-draw $c $w wide square at [$p] = draw $c $w wide square at $p;
+draw $c $w wide squares at [$p] = draw $c $w wide square at $p;
 
 $v_tr = [(0,0),(200,0),(400,0)];
 $v_cl = [(0,200),(200,200),(400,200)];
@@ -26,14 +26,11 @@ $s1 = 4;
 $s2 = 7;
 $s3 = 2;
 
+draw $effect $size wide squares at [$ps] = draw $e $size wide squares at $ps;
+
 every frame {
     draw $c $w_morph wide square at $v_morph;
-    draw $e $w1 wide square at $v_tr;
-    draw $e $w1 wide square at $v_cl;
-    draw $e $w1 wide square at $v_br;
-    draw $e $w1 wide square at $v_lu;
-    draw $e $w1 wide square at $v_cd;
-    draw $e $w1 wide square at $v_ru;
+    draw inversed $w1 wide square at [$v_tr,$v_cl,$v_br,$v_lu,$v_cd,$v_ru];
     draw randomized $w1 wide square at (180,150);
 }
 
@@ -46,5 +43,5 @@ every frame {
     move $v_lu up by $s2;
 }
 
-@inflate
+"inflate"
 every frame add 1 to $w_morph;
