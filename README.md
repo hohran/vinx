@@ -3,7 +3,7 @@
 <!-- PROJECT LOGO -->
 <br />
 <div align="center">
-  <img src="https://github.com/hohran/vinx/blob/main/showcase.gif" alt="Showcase" width="300" height="300">
+  <!-- <img src="https://github.com/hohran/vinx/blob/main/showcase.gif" alt="Showcase" width="300" height="300"> -->
   <!-- <a href="/blob/main/LICENSE.txt"> -->
   <!--   <img src="images/logo.png" alt="Logo" width="80" height="80"> -->
   <!-- </a> -->
@@ -16,7 +16,7 @@
     <!-- <a href="https://github.com/hohran/vinx"><strong>Explore the docs »</strong></a> -->
     <br />
     <br />
-    <a href="https://github.com/hohran/vinx">View Demo</a>
+    <a href="https://github.com/hohran/vinx/blob/main/showcase.gif">View Demo</a>
     &middot;
     <a href="https://github.com/hohran/vinx/issues/new?template=bug_report.md">Report Bug</a>
     &middot;
