@@ -29,8 +29,8 @@ $s3 = 2;
 draw $effect $size wide squares at [$ps] = draw $e $size wide squares at $ps;
 
 every frame {
-    draw $c $w_morph wide square at $v_morph;
-    draw inversed $w1 wide square at [$v_tr,$v_cl,$v_br,$v_lu,$v_cd,$v_ru];
+    draw $c $w_morph wide squares at $v_morph;
+    draw inversed $w1 wide squares at [$v_tr,$v_cl,$v_br,$v_lu,$v_cd,$v_ru];
     draw randomized $w1 wide square at (180,150);
 }
 
