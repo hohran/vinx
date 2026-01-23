@@ -1,0 +1,34 @@
+/*
+    We will look at the rest of all features
+*/
+
+/*
+    Loading other vinx files
+
+    To do this, just
+    ```
+    load "path/to/file";
+    ```
+
+    You can omit the ".vinx" extension in the file name
+    Just keep in mind that loading files first looks at the exact filename you specified
+    If it does not find the file, it appends ".vinx" extension and tries again
+*/
+
+load "01_basics";
+
+/*
+    Effects
+
+    Effects are implemented quite inefficiently, so for now they are skipped in the prior examples
+    The only effects for the time being are:
+        * inversed      // invert the color
+        * randomized    // randomize the specified area
+
+    You can also only use them in drawing
+*/
+
+every frame {
+    draw inversed rectangle from (50,50) to (180,180);
+    draw inversed rectangle from (120,120) to (250,250);
+}
