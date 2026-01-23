@@ -60,6 +60,7 @@ impl Translator {
     fn get_event_interpretations(&self, node: &Node, var_count: usize, interpretations: &mut Vec<Vec<TypeConstraints>>) -> bool {
         let seq = self.get_sequence(node);
         let ints = self.action_decision_automaton.get_interpretations(&seq, var_count);
+
         if ints.is_empty() {
             return false;
         }

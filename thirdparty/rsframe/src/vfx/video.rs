@@ -377,7 +377,7 @@ impl Video {
     pub fn from_file(filename: String, ffmpeg: &str) -> Result<Video, String> {
         let temp = create_tmp_folder();
 
-        eprintln!("Decoding video \"{filename}\"...");
+        eprintln!("Encoding video \"{filename}\"...");
         let encoding = ".bmp";
         let output = Command::new(ffmpeg)
             .arg("-i")

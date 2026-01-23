@@ -1,9 +1,9 @@
 use std::process::exit;
 
 use colorized::Color;
-use tree_sitter::{Node, Range};
+use tree_sitter::Node;
 
-use crate::{action::Action, event::{Operations, component::Components}, translator::{file_manager::FileManager, get_children, seq_to_str}, variable::{stack::Stack, values::VariableValue}};
+use crate::{action::Action, event::{Operations, component::Components}, translator::{file_manager::FileManager, get_children}, variable::{stack::Stack, values::VariableValue}};
 
 use super::{automata::automaton::Automaton, builtins::load_builtin_operations, Word};
 

@@ -7,7 +7,7 @@ mod translator;
 pub use translator::parse;
 use tree_sitter::Node;
 mod builtins;
-mod component_class;
+// mod component_class;
 mod operations;
 mod value;
 mod actions;
@@ -89,6 +89,7 @@ macro_rules! word {
     ( Pos ) => { Word::Type(VariableType::Pos) };
     ( Color ) => { Word::Type(VariableType::Color) };
     ( Direction ) => { Word::Type(VariableType::Direction) };
+    ( Effect ) => { Word::Type(VariableType::Effect) };
     ( Component($i:expr) ) => { Word::Type(VariableType::Component($i)) };
     ( Any ( $i:expr ) ) => { Word::Type(VariableType::Any($i)) };
     ( ( $($x:tt)+ ) ) => { word!($($x)+) };
@@ -129,6 +130,13 @@ mod tests {
         assert_eq!(word!(String),Word::Type(VariableType::String));
         assert_eq!(word!(ahoj),Word::Keyword("ahoj".to_string()));
         assert_eq!(word!("ahoj"),Word::Keyword("ahoj".to_string()));
+    }
+
+    #[test]
+    fn test_word_eq() {
+        let w1 = word!(Effect);
+        let w2 = word!(Effect);
+        assert_eq!(w1,w2);
     }
 
     #[test]

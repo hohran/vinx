@@ -166,10 +166,12 @@ impl Automaton {
     }
 
     /// Returns all sequences in a given automaton in form: (sequence, return_type).
+    #[allow(dead_code)]
     pub fn get_all_sequences(&self) -> Vec<(Sequence,SequenceValue)> {
         self.get_all_sequences_rec(0, &vec![])
     }
 
+    #[allow(dead_code)]
     fn get_all_sequences_rec(&self, start: StateId, seq: &Vec<Word>) -> Vec<(Sequence,SequenceValue)> {
         let mut ret = vec![];
         if let Some(r) = self.return_values.get(&start) {

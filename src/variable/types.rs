@@ -10,6 +10,7 @@ macro_rules! vtype {
     ( Pos ) => { VariableType::Pos };
     ( Color ) => { VariableType::Color };
     ( Direction ) => { VariableType::Direction };
+    ( Effect ) => { VariableType::Effect };
     ( Component($i:expr) ) => { VariableType::Component($i) };
     ( Any ( $i:expr ) ) => { VariableType::Any($i) };
     ( ( $($x:tt)+ ) ) => { vtype!($($x)+) };
@@ -267,6 +268,46 @@ mod tests {
         assert_eq!(vt3.intersect(&vt4), Some(vtype!(Any(1))));
         // Any(1) + [Any(1)] -> None !!! think about it
         assert_eq!(vt3.intersect(&vt5), None);
+    }
+
+    #[test]
+    fn test_eq() {
+        // Int,
+        let v1 = vtype!(Int);
+        let v2 = vtype!(Int);
+        assert_eq!(v1,v2);
+        // Pos,
+        let v1 = vtype!(Pos);
+        let v2 = vtype!(Pos);
+        assert_eq!(v1,v2);
+        // Color,
+        let v1 = vtype!(Color);
+        let v2 = vtype!(Color);
+        assert_eq!(v1,v2);
+        // String,
+        let v1 = vtype!(String);
+        let v2 = vtype!(String);
+        assert_eq!(v1,v2);
+        // Effect,
+        let v1 = vtype!(Effect);
+        let v2 = vtype!(Effect);
+        assert_eq!(v1,v2);
+        // Direction,
+        let v1 = vtype!(Direction);
+        let v2 = vtype!(Direction);
+        assert_eq!(v1,v2);
+        // Vec(Box<VariableType>),
+        let v1 = vtype!([[Int]]);
+        let v2 = vtype!([[Int]]);
+        assert_eq!(v1,v2);
+        // Any(usize),
+        let v1 = vtype!(Any(1));
+        let v2 = vtype!(Any(2));
+        assert_eq!(v1,v2);
+        // Component(usize),
+        let v1 = vtype!(Component(1));
+        let v2 = vtype!(Component(1));
+        assert_eq!(v1,v2);
     }
 
     #[test]

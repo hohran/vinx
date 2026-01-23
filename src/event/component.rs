@@ -1,31 +1,31 @@
 use std::collections::HashMap;
 
-use crate::{action::Action, context::Globals, variable::values::VariableValue};
+// use crate::{action::Action, context::Globals, variable::values::VariableValue};
 
 pub type Components = HashMap<String,Component>;
 
 #[derive(Debug,Clone)]
 pub struct Component {
-    class_id: usize,
-    /// name of component type
-    scope: Globals,
-    // operations: HashMap<usize, Vec<Event>>,
-    components: Components,
-    actions: Vec<Action>,
-    action_activeness: HashMap<String, bool>,
+    // class_id: usize,
+    // /// name of component type
+    // scope: Globals,
+    // // operations: HashMap<usize, Vec<Event>>,
+    // components: Components,
+    // actions: Vec<Action>,
+    // action_activeness: HashMap<String, bool>,
 }
 
 impl Component {
-    pub fn new(class_id: usize, mut parameters: Vec<String>, mut param_values: Vec<VariableValue>, actions: Vec<Action>, action_activeness: HashMap<String,bool>, components: Components) -> Self {
-        assert_eq!(parameters.len(), param_values.len());
-        let mut scope = HashMap::new();
-        for _ in 0..param_values.len() {
-            let name = parameters.pop().unwrap();
-            let val = param_values.pop().unwrap();
-            scope.insert(name, val);
-        }
-        Self { class_id, scope, actions, action_activeness, components }
-    }
+    // pub fn new(class_id: usize, mut parameters: Vec<String>, mut param_values: Vec<VariableValue>, actions: Vec<Action>, action_activeness: HashMap<String,bool>, components: Components) -> Self {
+    //     assert_eq!(parameters.len(), param_values.len());
+    //     let mut scope = HashMap::new();
+    //     for _ in 0..param_values.len() {
+    //         let name = parameters.pop().unwrap();
+    //         let val = param_values.pop().unwrap();
+    //         scope.insert(name, val);
+    //     }
+    //     Self { class_id, scope, actions, action_activeness, components }
+    // }
 
     // pub fn step()
 }

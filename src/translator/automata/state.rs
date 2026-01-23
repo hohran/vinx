@@ -193,6 +193,7 @@ impl State {
     }
 
     /// Get all transitions possible from this state.
+    #[allow(dead_code)]
     pub fn get_all_transitions(&self) -> &Vec<(Word,StateId)>{
         &self.transitions
     }
