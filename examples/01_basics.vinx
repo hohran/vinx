@@ -7,21 +7,28 @@
 
 /** 1. Let's start by drawing out a rectangle **/
 
-/* This is called an action and it is composed of:
-v- trigger -v   
-every frame { 
-    v--------------- and events -----------------v
-    draw red rectangle from (100,100) to (200,200);
-} */
+/* 
+    The first thing you need to do is define an action, which consists of:
+    v- trigger -v   
+    every frame { 
+        v--------------- and events -----------------v
+        draw red rectangle from (100,100) to (200,200);     // do not forget semicolons after events
+        do something else ...;
+    } 
+
+    Below you can see our first action
+*/
 
 every frame {
-    draw red rectangle from (100,100) to (200,200); // do not forget semicolons after each event :)
+    draw red rectangle from (100,100) to (200,200);
 }
 
-/* These are equivalent
-every frame draw red rectangle from (100,100) to (200,200);     // Since there is only one event, we can skip the braces, just like in C.
-every 1 frame ...                                               // We can specify a step in which it will trigger. The default is 1, so this is equivalent.
-every 1 frames ...                                              // "frame" and "frames" can be mixed, it is up to you, what is readable the most.
+/* 
+    These are equivalent
+
+    every frame draw red rectangle from (100,100) to (200,200);     // Since there is only one event, we can skip the braces, just like in C.
+    every 1 frame ...                                               // We can specify a step in which it will trigger. The default is 1, so this is equivalent.
+    every 1 frames ...                                              // "frame" and "frames" can be mixed, it is up to you, what is readable the most.
 */
 
 /**********************************************/
@@ -30,8 +37,8 @@ every 1 frames ...                                              // "frame" and "
 /** 2. Let's change some values **/
 
 /*
-   there are keywords and values
-   values can have different types, such as 
+   There are keywords and values
+   Values can have different types, such as 
     * Color - red, blue, green, ...
     * Pos   - (100,100), (50,50)    // negative numbers are not supported yet
     * Int   - 1, 2, 42, ...         // negative numbers also not supported
@@ -40,16 +47,16 @@ every 1 frames ...                                              // "frame" and "
     * Vec   - [1,2], [red, green]   // elements must be of the same type
                                     // vectors can be nested
 
-   so in the event 
+   So in the event 
     draw red rectangle from (100,100) to (200,200);
    values are: red, (100,100), and (200,200)
-   the rest are keywords
+   The rest are keywords
 */
 
 /*
     For sharing, or changing values, there are also variables.
     A variable always starts with $
-    you can define variables like this
+    You can define variables like this
 */
 
 // $color = red;    // dont forget the semicolon
