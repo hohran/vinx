@@ -1,0 +1,74 @@
+// initial values
+$p1 = (125,125);    // first position
+$p2 = (175,175);    // second one
+$d = right;         // direction
+$c = red;           // color
+$s = 5;             // speed of movement
+
+// the initial values will be populated with these ones
+$ds = [down,right,down,right,up];
+$cs = [blue,red,blue,red,yellow];
+
+// get next value of $vec
+switch $vec into $v = {
+    top $vec into $v;
+    rotate $vec left by 1;
+}
+
+"draw"
+every frame draw $c rectangle from $p1 to $p2;
+
+"move"
+every frame {
+    move $p1 $d by $s;
+    move $p2 $d by $s;
+}
+
+// staying still
+at 60 frames {
+    deactivate "switch values";
+    deactivate "move";
+}
+
+"switch values"
+every 10 frames {
+    switch $ds into $d;
+    switch $cs into $c;
+}
+
+// flickering
+at 65 frames {
+    activate "mad colors";
+}
+
+$mad_c = [green,blue,red,orange,yellow,purple,pink];
+
+"mad colors"
+!every 2 frames {
+    switch $mad_c into $c;
+}
+
+// getting crazy
+at 85 frames {
+    activate "mad pos";
+}
+
+// just some random values
+// the sizes are misaligned on purpose for easy "randomness"
+$mad_p1 = [(30,60),(310,100),(200,230),(420,150),(420,150),(150,90)];
+$mad_p2 = [(90,120),(390,180),(300,330),(470,200)];
+
+"mad pos"
+!every 2 frames {
+    switch $mad_p1 into $p1;
+    switch $mad_p2 into $p2;
+}
+
+// staying still, but big
+at 110 frames {
+    deactivate "mad colors";
+    deactivate "mad pos";
+    set $c to red;
+    set $p1 to (50,50);
+    set $p2 to (550,350);
+}
