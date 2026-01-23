@@ -83,7 +83,7 @@ For the time being.
 ```bash
 cargo build --release
 ```
-3. Use the executable found in `target/release/vinx`
+3. Use the `vinx` executable found in `target/release/`
 
 <!-- USAGE EXAMPLES -->
 ## Usage
@@ -105,6 +105,13 @@ Options:
 See `examples/` to have a nice walkthrough for all the features.
 
 You can then start to write your own `.vinx` files.
+
+
+### Syntax highlighting
+
+You can install the vinx grammar from [tree-sitter-vinx](https://github.com/hohran/tree-sitter-vinx) and integrate it into your favorite text editor.
+
+For VS Code, this may not work, as far as I am concerned.
 <!-- Use this space to show useful examples of how a project can be used. Additional screenshots, code examples and demos work well in this space. You may also link to more resources. -->
 <!---->
 <!-- _For more examples, please refer to the [Documentation](https://example.com)_ -->
