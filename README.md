@@ -1,6 +1,7 @@
 <!-- [![MIT License][license-shield]][license-url] -->
 
 <!-- PROJECT LOGO -->
+![showcase](https://github.com/hohran/vinx/blob/main/showcase.gif)
 <br />
 <div align="center">
   <!-- <a href="/blob/main/LICENSE.txt"> -->
