@@ -11,5 +11,5 @@ debug
 *.png
 *.mp4
 *.mkv
-!examples/blank.mp4
+!examples/*.mp4
 !how_to/blank.mp4
