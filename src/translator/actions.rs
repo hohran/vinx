@@ -3,7 +3,7 @@ use std::process::exit;
 use colorized::Color;
 use tree_sitter::Node;
 
-use crate::{action::{Action, Timestamp}, event::Event, translator::{SequenceValue, Word, get_children, seq_to_str, translator::{Kind, Translator}}, variable::{Variable, stack::VariableMap}};
+use crate::{action::{Action, Timestamp}, event::Event, translator::{SequenceValue, Word, get_all_children, get_children, seq_to_str, translator::{Kind, Translator}}, variable::{Variable, stack::VariableMap}};
 
 impl Translator {
     pub fn get_action_definition(&mut self, node: &Node) {
@@ -25,7 +25,7 @@ impl Translator {
 
     fn get_action_trigger(&self, node: &Node) -> (bool, bool, Timestamp, Timestamp) {
         let mut i = 0;
-        let children = get_children(node);
+        let children = get_all_children(node);  // need to keep the ! symbol
         let active = self.get_action_active(&children[i], &mut i);
         let onetime = !self.get_action_repeats(&children[i], &mut i);
         let (timestamp,acc) = self.get_action_timestamp_and_acc(&children, &mut i);

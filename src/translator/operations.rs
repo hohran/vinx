@@ -1,6 +1,6 @@
 use tree_sitter::Node;
 
-use crate::{event::{Event, Operation}, translator::{SequenceValue, automata::linear_automaton::LinearAutomaton, get_children, translator::Kind, type_constraints::TypeConstraints}, variable::{Variable, stack::VariableMap, types::VariableType, values::VariableValue}};
+use crate::{event::{Event, Operation}, translator::{SequenceValue, automata::linear_automaton::LinearAutomaton, get_children, seq_to_str, translator::Kind, type_constraints::TypeConstraints}, variable::{Variable, stack::VariableMap, types::VariableType, values::VariableValue}};
 
 use super::{translator::Translator, Sequence, Word};
 
@@ -146,7 +146,6 @@ impl Translator {
         }
     }
 
-    /// TODO: first get all interpretations, then see if any is valid. if not maybe throw error
     fn handle_operation(&mut self, events_node: &Node, operands: &Vec<String>, signature: &Vec<Word>, iterators: Vec<usize>) {
         // push variables to scope
         self.globals.push_layer();
@@ -179,7 +178,7 @@ impl Translator {
 
     fn add_operation(&mut self, signature: Vec<Word>, operands: Vec<String>, events: Vec<Event>, iterators: &Vec<usize>, variables: &VariableMap) -> bool {
         let op_id = self._number_of_builtin_operations + self.operations.len() + 1;
-        // println!("adding operation with signature {:?} as {op_id}", signature);
+        // println!("adding operation with signature \"{}\"", seq_to_str(&signature));
         let la = LinearAutomaton::new(signature, SequenceValue::Operation(op_id));
         if !self.action_decision_automaton.union(la) {
             return false

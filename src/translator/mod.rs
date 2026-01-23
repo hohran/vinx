@@ -21,6 +21,11 @@ fn get_children<'a>(node: &Node<'a>) -> Vec<Node<'a>> {
     node.named_children(&mut node.walk()).filter(|n| n.kind() != "comment").collect()
 }
 
+/// Gets node children with unnamed symbols without comments
+fn get_all_children<'a>(node: &Node<'a>) -> Vec<Node<'a>> {
+    node.children(&mut node.walk()).filter(|n| n.kind() != "comment").collect()
+}
+
 #[derive(Clone,Hash,Eq,PartialEq,Debug)]
 pub enum Word {
     Keyword(String),

@@ -82,7 +82,7 @@ impl Translator {
             "effect" => self.effect_to_val(&val).to_var(),
             "variable" => {
                 let name = self.text(&val);
-                let var = self.globals.get_variable(name).expect(&format!("error: unknown variable {}", self.text(&val))).clone();
+                let var = self.globals.get_variable(name).expect(&format!("error: unknown variable \"{}\" at row {}", self.text(&val), node.start_position().row)).clone();
                 Variable::new(name, var.get_type())
             }
             "direction" => self.direction_to_val(&val).to_var(),

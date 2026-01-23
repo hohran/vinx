@@ -62,6 +62,23 @@ impl TypeConstraints {
         out
     }
 
+    pub fn strictly_matches(&self, other: &Self) -> bool {
+        for i in 0..self.types.len() {
+            if !self.types[i].strictly_matches(&other.types[i]) {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Refine all types of with given binding with new_type.
+    pub fn _update_binding(&mut self, binding: usize, new_type: VariableType) {
+        for i in 0..self.types.len() {
+            let vt = &mut self.types[i];
+            vt.set_binding_type(binding, &new_type);
+        }
+    }
+
     /// If self[at] (e.g., Any(0)) is a superset of other[at] (e.g., Int), replace every occurrence
     /// of self[at] in self, with other[at]
     /// so self = [Any(0) Any(0) Pos] would change to [Int Int Pos]
@@ -84,9 +101,9 @@ impl TypeConstraints {
                 .with_inverted_binding()        // invert binding so that it does not get mixed up with currently used bindings (if it is ambiguous)
             );
             // remove currently processed index
-            if let Some(this) = updated.iter().position(|x| *x == at) {
-                updated.remove(this);
-            }
+            while let Some(rm) = updated.iter().position(|x| *x >= at) {
+                updated.remove(rm);
+                }
             updated
         } else {
             vec![]
@@ -111,9 +128,69 @@ impl TypeConstraints {
         }
     }
 
+    fn intersect_at(&mut self, other: &Self, at: usize) -> bool {
+        let self_at = &self.types[at];
+        let other_at = &other.types[at];
+        if !self_at.is_ambiguous() && !other_at.is_ambiguous() {
+            if self_at != other_at {
+                return false;
+            }
+        }
+        // this means that self_at can be refined by other_at
+        if other_at.is_subset_of(&self.types[at]) {
+            // disallow that Any(0) is assignable with [Any(0)]
+            if self_at.get_binding() == other_at.with_inverted_binding().get_binding() && self_at.get_depth() != other_at.get_depth() {
+                return false;
+            }
+            let depth = self_at.get_depth();     // since self in other: other has always lower depth
+            self._update_binding(
+                self.types[at].get_binding()                   // binding of current type
+                .expect("error: expected to be ambiguous"),  // if it is a superset, it should always be ambiguous (it will have a binding number)
+                other.types[at]                  // for the current type
+                .unwrap_depth(depth)            // this is the part to update with
+                .with_inverted_binding()        // invert binding so that it does not get mixed up with currently used bindings (if it is ambiguous)
+            );
+        }
+        true
+    }
+
+    pub fn intersect(mut self, mut other: Self) -> Option<Self> {
+        assert_eq!(self.types.len(), other.types.len());
+        loop {
+            let mut self_c = self.clone();
+            let mut other_c = other.clone();
+            for i in 0..self.types.len() {
+                if !self_c.intersect_at(&other, i) {
+                    return None;
+                }
+                if !other_c.intersect_at(&self, i) {
+                    return None;
+                }
+            }
+            self_c.refresh_bindings();
+            other_c.refresh_bindings();
+            if self_c.strictly_matches(&self) && other_c.strictly_matches(&other) {
+                break;
+            } else {
+                self = self_c;
+                other = other_c;
+            }
+        }
+        let mut out = Self::new(self.types.len());
+        for i in 0..self.types.len() {
+            if let Some(vt) = self.types[i].intersect(&other.types[i]) {
+                out.types[i] = vt;
+            } else {
+                return None;
+            }
+        }
+        Some(out)
+    }
+
     /// [ Any(1), Any(1) ] + [ Any(2), Int ] -> [ Int, Int ]
     /// [Int Pos] + [Any(0) Any(0)] -> None
-    pub fn intersect(mut self, mut other: Self) -> Option<Self> {
+    pub fn _intersect(mut self, mut other: Self) -> Option<Self> {
+        println!("intersect {self} + {other}");
         assert_eq!(self.types.len(), other.types.len());
         let mut types: Vec<VariableType> = vec![];
         self.infer_bindings(&mut other);
@@ -126,6 +203,7 @@ impl TypeConstraints {
         }
         let mut out = Self::from(types);
         out.refresh_bindings();
+        println!(" = {out}");
         Some(out)
     }
 
@@ -174,6 +252,13 @@ mod tests {
     }
 
     #[test]
+    fn test_infer_bindings() {
+        let mut tc1 = constaint![[(Any(0))] (Any(0))];
+        let mut tc2 = constaint![[(Any(0))] (Any(1))];
+        tc1.infer_bindings(&mut tc2);
+    }
+
+    #[test]
     fn test_update_binding() {
         let mut tc = constaint![(Any(0)) [(Any(1))] Int (Any(1))];
         tc.update_binding(0, vtype!(Pos));
@@ -203,7 +288,7 @@ mod tests {
         // complex
         let tc1 = constaint![(Any(1)) [(Any(3))] (Any(2)) (Any(2)) [Int]];
         let tc2 = constaint![(Any(1)) (Any(1)) (Any(2)) (Any(1)) (Any(2))];
-        assert_eq!(tc1.clone().intersect(tc2.clone()).unwrap(), constaint![[Int] [Int] [Int] [Int] [Int]]);
+        assert!(tc1.intersect(tc2).unwrap().strictly_matches(&constaint![[Int] [Int] [Int] [Int] [Int]]));
         // unsat
         let tc1 = constaint!((Any(1)) (Any(1)) Int Pos);
         let tc2 = constaint!((Any(0)) (Any(1)) (Any(1)) (Any(0)));
@@ -212,5 +297,9 @@ mod tests {
         let tc1 = constaint!((Any(1)) [Any(1)]);
         let tc2 = constaint!((Any(0)) (Any(0)));
         assert_eq!(tc1.intersect(tc2), None);
+        // problematic
+        let tc1 = constaint!([Any(0)] (Any(0)));
+        let tc2 = constaint!([Any(0)] (Any(1)));
+        assert!(tc1.intersect(tc2).unwrap().strictly_matches(&constaint![[Any(0)] (Any(0))]));
     }
 }

@@ -144,7 +144,6 @@ impl Automaton {
                 let mut constraint_clone = current_type_constraints.clone();
                 if let Some(n) = self.states[start].get_exact_transition(branch_word) {
                     if branch_word.is_ambiguous() {
-
                     }
                     if let Some(var_id) = w.get_binding() {
                         let var_depth = w.get_variable_type().unwrap().get_depth();
@@ -550,6 +549,7 @@ mod tests {
     }
 
     #[test]
+    // FIXME
     fn test_get_all_paths_bound() {
         let ops = [
             seq!(a (Any(1)) (Any(1)) Int Pos),  // bad ending
