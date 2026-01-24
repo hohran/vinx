@@ -80,11 +80,17 @@ I am keeping this project still very personal, so it is not submitted anywhere.
 For the time being.
 
 1. Install the dependencies
-2. Build this repo from source with
+2. Get the source code with
+```bash
+git clone https://github.com/hohran/vinx.git
+```
+3. Build this repo from source with
 ```bash
 cargo build --release
 ```
-3. Use the `vinx` executable found in `target/release/`
+4. Use the `vinx` executable found in `target/release/`
+
+Optionally, you can `cargo install --path path/to/this/repo`, but it is not recommened since this is still not an official release.
 
 <!-- USAGE EXAMPLES -->
 ## Usage
@@ -103,7 +109,7 @@ Options:
   -V, --version  Print version
 ```
 
-See `examples/` to have a nice walkthrough for all the features.
+See `how_to/` to have a nice walkthrough for all the features, or look into `examples/`.
 
 You can then start to write your own `.vinx` files.
 
