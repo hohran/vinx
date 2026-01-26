@@ -116,9 +116,10 @@ You can then start to write your own `.vinx` files.
 
 ### Syntax highlighting
 
-You can install the vinx grammar from [tree-sitter-vinx](https://github.com/hohran/tree-sitter-vinx) and integrate it into your favorite text editor.
+You can install the vinx grammar from [tree-sitter-vinx](https://github.com/hohran/tree-sitter-vinx) and integrate it into your favorite text editor, which supports tree-sitter, such as neovim or emacs.
+Since the grammar is not officially published in any language repositories, it will require a manual setup.
 
-For VS Code, this may not work, as far as I am concerned.
+For **VS Code** integration, use the [vinx-grammar](https://marketplace.visualstudio.com/items?itemName=JanHranicka.vinx-grammar&ssr=false#overview) extension.
 <!-- Use this space to show useful examples of how a project can be used. Additional screenshots, code examples and demos work well in this space. You may also link to more resources. -->
 <!---->
 <!-- _For more examples, please refer to the [Documentation](https://example.com)_ -->
