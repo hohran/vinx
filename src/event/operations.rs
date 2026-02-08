@@ -4,43 +4,57 @@ use crate::context::Context;
 use crate::variable::values::Direction;
 use crate::video::Drawable;
 
+fn expect_param_count(operation_name: &str, params: &Vec<Variable>, expected: usize) {
+    assert_eq!(params.len(), expected, "error: function {operation_name} expected {expected} parameters, got {}", params.len());
+}
 
 pub fn set_activeness(context: &mut Context, scope: &mut Stack, action_activeness: &mut HashMap<String,bool>, params: &Vec<Variable>, val: bool) {
-    assert!(params.len() == 1, "expected 1 parameter, got {}", params.len());
-    let label = &params[0];
-    let label_val = label.get_value(context, scope);
-    if let VariableValue::String(l) = label_val {
-        let b = action_activeness.get_mut(&l).expect(&format!("error: unknown action {l}"));
-        *b = val;
-    } else {
-        panic!("error: unexpected value type {:?}", label_val);
-    }
+    let op_name = if val {"activate"} else {"deactivate"};
+    expect_param_count(op_name, params, 1);
+    // get values
+    let par1 = params[0].get_value(context, scope);
+    let label = par1.into_string();
+    // perform operation
+    let a = action_activeness.get_mut(label);
+    let Some(ac) = a else {
+        panic!("error: {op_name}: could not find action named {label}");
+    };
+    *ac = val;
 }
 
 pub fn toggle_activeness(context: &mut Context, scope: &mut Stack, action_activeness: &mut HashMap<String,bool>, params: &Vec<Variable>) {
-    assert!(params.len() == 1, "expected 1 parameter, got {}", params.len());
-    let label = &params[0];
-    let label_val = label.get_value(context, scope);
-    let VariableValue::String(l) = label_val else {
-        panic!("error: unexpected value type {:?}", label_val);
+    let op_name = "toggle";
+    expect_param_count(op_name, params, 1);
+    let par = &params[0].get_value(context, scope);
+    let label = par.into_string();
+    let Some(ac) = action_activeness.get_mut(label) else {
+        panic!("error: {op_name}: could not find action named {label}");
     };
-    let b = action_activeness.get_mut(&l).expect(&format!("error: unknown action {l}"));
-    *b = !*b;
+    *ac = !*ac;
 }
 
 pub fn add(context: &mut Context, scope: &mut Stack, params: &mut Vec<Variable>) {
-    let v1 = &params[0];
-    let v2 = &params[1];
-    match (v1.get_value(context, scope),v2.get_value(context, scope)) {
-        (VariableValue::Int(i1),VariableValue::Int(i2)) => {
-            params[1].set_value(context, scope, VariableValue::Int(i1.saturating_add(i2)));
-        }
-        (v1,v2) => panic!("error: unexpected operand types {:?} and {:?}",v1,v2)
-    }
+    expect_param_count("add", params, 2);
+    let v1 = &params[0].get_value(context, scope);
+    let v2 = &params[1].get_value(context, scope);
+    let i1 = v1.into_int();
+    let mut i2 = v2.into_int();
+    i2 = i2.saturating_add(i1);
+    params[1].set_value(context, scope, VariableValue::Int(i2));
+}
+
+pub fn sub(context: &mut Context, scope: &mut Stack, params: &mut Vec<Variable>) {
+    expect_param_count("sub", params, 2);
+    let v1 = &params[0].get_value(context, scope);
+    let v2 = &params[1].get_value(context, scope);
+    let i1 = v1.into_int();
+    let mut i2 = v2.into_int();
+    i2 = i2.saturating_sub(i1);
+    params[1].set_value(context, scope, VariableValue::Int(i2));
 }
 
 pub fn set(context: &mut Context, scope: &mut Stack, params: &mut Vec<Variable>) {
-    assert!(params.len() == 2, "expected 2 parameters, got {}", params.len());
+    expect_param_count("set", params, 2);
     let v2 = &params[1];
     let new_val = v2.get_value(context, scope);
     let v1 = &mut params[0];
@@ -48,206 +62,138 @@ pub fn set(context: &mut Context, scope: &mut Stack, params: &mut Vec<Variable>)
 }
 
 pub fn top_into(context: &mut Context, scope: &mut Stack, params: &mut Vec<Variable>) {
-    assert!(params.len() == 2, "expected 2 parameters, got {:?}", params);
-    let v = &params[0];
-    let v_val = v.get_value(context, scope);
-    if let VariableValue::Vec(v) = v_val {
-        if v.is_empty() { panic!("error: empty vector"); }
-        let top = &v[0].get_value(context, scope);
-        params[1].set_value(context, scope, top.clone());
-    } else {
-        panic!("error: expected v to be vector, got {:?}", v_val);
-    }
+    expect_param_count("top into", params, 2);
+    let par1 = &params[0].get_value(context, scope);
+    let v = par1.into_vec();
+    if v.is_empty() { panic!("error: empty vector"); }
+    let top = v[0].get_value(context, scope);
+    params[1].set_value(context, scope, top);
 }
 
 pub fn rotate_vec(context: &mut Context, scope: &mut Stack, params: &mut Vec<Variable>) {
-    assert!(params.len() == 2 || params.len() == 3, "expected 2 or 3 parameters, got {}", params.len());
-    let v = &params[0];
-    let d = &params[1];
-    let v_val = v.get_value(context, scope);
-    let d_val = d.get_value(context, scope);
-    let step_val = if params.len() == 2 { 1 } else { 
-        let step = &params[2].get_value(context, scope);
-        if let VariableValue::Int(i) = step {
-            *i
-        } else {
-            panic!("error: expected step to be int, got {:?}", step)
-        }
-    };
-    match (v_val,d_val) {
-        (VariableValue::Vec(mut arr),VariableValue::Direction(d)) => {
-            match d {
-                Direction::Left => {
-                    if arr.len() == 0 { return; }
-                    for _ in 0..step_val {
-                        let e = arr.remove(0);
-                        arr.push(e);
-                    }
-                }
-                Direction::Right => {
-                    if arr.len() == 0 { return; }
-                    for _ in 0..step_val {
-                        if let Some(e) = arr.pop() {
-                            arr.insert(0, e);
-                        }
-                    }
-                }
-                _ => panic!("error: expected only directions left and right")
+    expect_param_count("rotate", params, 3);
+    let par1 = params[0].get_value(context, scope);
+    let par2 = params[1].get_value(context, scope);
+    let par3 = params[2].get_value(context, scope);
+    let mut v = par1.into_vec().clone();
+    if v.is_empty() { return; }
+    let d = par2.into_direction();
+    let step = par3.into_int();
+    match d {
+        Direction::Left => {
+            for _ in 0..step {
+                let e = v.remove(0);
+                v.push(e);
             }
-            params[0].set_value(context, scope, VariableValue::Vec(arr));
         }
-        (v,d) => panic!("error: expected variables to be of type vector and direction, got {:?} and {:?}",v,d)
+        Direction::Right => {
+            for _ in 0..step {
+                if let Some(e) = v.pop() {
+                    v.insert(0, e);
+                }
+            }
+        }
+        _ => {
+            panic!("error: rotate vec: vector can only be rotated to left or right");
+        }
     }
+    params[0].set_value(context, scope, VariableValue::Vec(v));
 }
 
 pub fn draw_rect(context: &mut Context, scope: &mut Stack, params: &Vec<Variable>) {
-    assert!(params.len() == 3, "expected 3 parameters, got {}", params.len());
-    let c = &params[0];
-    let tl = &params[1];
-    let br = &params[2];
-    let tl_val = tl.get_value(context, scope);
-    let br_val = br.get_value(context, scope);
-    let c_val = c.get_value(context, scope);
-    let p;
-    if let VariableValue::Color(c) = c_val {
-        p = c.clone();
-    } else {
-        panic!("invalid type for color c: {:?}", c_val);
-    }
-    match (tl_val,br_val) {
-        (VariableValue::Pos(l, t), VariableValue::Pos(r, b)) => {
-            let frame = context.get_frame();
-            frame.draw_rect((l,t), (r,b), p);
-        }
-        _ => { 
-            panic!("expected tl/br to be positions");
-        }
-    }
+    expect_param_count("draw rectangle", params, 3);
+    let par1 = &params[0].get_value(context, scope);
+    let par2 = &params[1].get_value(context, scope);
+    let par3 = &params[2].get_value(context, scope);
+    let c = par1.into_color();
+    let (l,t) = par2.into_pos();
+    let (r,b) = par3.into_pos();
+    let frame = context.get_frame();
+    frame.draw_rect((l as usize,t as usize), (r as usize,b as usize), c);
 }
 
 pub fn draw_effect_rect(context: &mut Context, scope: &mut Stack, params: &Vec<Variable>) {
+    expect_param_count("draw rectangle (effect)", params, 3);
     assert!(params.len() == 3, "expected 3 parameters, got {}", params.len());
-    let c = &params[0];
-    let tl = &params[1];
-    let br = &params[2];
-    let tl_val = tl.get_value(context, scope);
-    let br_val = br.get_value(context, scope);
-    let e_val = c.get_value(context, scope);
-    let VariableValue::Effect(e) = e_val else {
-        panic!("invalid type for effect: {:?}", e_val);
-    };
-    match (tl_val,br_val) {
-        (VariableValue::Pos(l, t), VariableValue::Pos(r, b)) => {
-            let frame = context.get_frame();
-            frame.draw_effect_rect((l,t), (r,b), e);
-        }
-        _ => { 
-            panic!("expected tl/br to be positions");
-        }
-    }
+    let par1 = &params[0].get_value(context, scope);
+    let par2 = &params[1].get_value(context, scope);
+    let par3 = &params[2].get_value(context, scope);
+    let e = par1.into_effect();
+    let (l,t) = par2.into_pos();
+    let (r,b) = par3.into_pos();
+    let frame = context.get_frame();
+    frame.draw_effect_rect((l as usize,t as usize), (r as usize,b as usize), e);
 }
 
 pub fn draw_rect_outline(context: &mut Context, scope: &mut Stack, params: &Vec<Variable>) {
-    assert!(params.len() == 3, "expected 3 parameters, got {}", params.len());
-    let c = &params[0];
-    let tl = &params[1];
-    let br = &params[2];
-    let tl_val = tl.get_value(context, scope);
-    let br_val = br.get_value(context, scope);
-    let c_val = c.get_value(context, scope);
-    let p;
-    if let VariableValue::Color(c) = c_val {
-        p = c.clone();
-    } else {
-        panic!("invalid type for color c: {:?}", c_val);
-    }
-    match (tl_val,br_val) {
-        (VariableValue::Pos(l, t), VariableValue::Pos(r, b)) => {
-            let frame = context.get_frame();
-            frame.draw_rect_outline((l,t), (r,b), p);
-        }
-        _ => { 
-            panic!("expected tl/br to be positions");
-        }
-    }
+    expect_param_count("draw rectangle", params, 3);
+    let par1 = &params[0].get_value(context, scope);
+    let par2 = &params[1].get_value(context, scope);
+    let par3 = &params[2].get_value(context, scope);
+    let c = par1.into_color();
+    let (l,t) = par2.into_pos();
+    let (r,b) = par3.into_pos();
+    let frame = context.get_frame();
+    frame.draw_rect_outline((l as usize,t as usize), (r as usize,b as usize), c);
 }
 
 pub fn move_pos_phase(context: &mut Context, scope: &mut Stack, params: &mut Vec<Variable>) {
-    assert!(params.len() == 3, "expected 3 parameters, got {}", params.len());
-    let pos = &params[0];
-    let d = &params[1];
-    let _step = &params[2];
-    let pos_val = pos.get_value(context, scope);
-    let d_val = d.get_value(context, scope);
-    let step_val = _step.get_value(context, scope);
-    // get step
-    let step;
-    if let VariableValue::Int(i) = step_val {
-        step = i as usize;
-    } else {
-        panic!("invalid type for step: {:?} (expected Int) in variable {}", step_val, _step.get_name());
-    }
+    expect_param_count("move", params, 3);
+    let par1 = &params[0].get_value(context, scope);
+    let par2 = &params[1].get_value(context, scope);
+    let par3 = &params[2].get_value(context, scope);
+    let mut pos = par1.into_pos();
+    let d = par2.into_direction();
+    let step = par3.into_int();
     let width = context.get_width() as i32;
     let height = context.get_height() as i32;
-    match pos_val {
-        VariableValue::Pos(mut x, mut y) => {
-            match d_val {
-                VariableValue::Direction(Direction::Left) => {
-                    x = (x as i32-step as i32).rem_euclid(width as i32) as usize; 
-                }
-                VariableValue::Direction(Direction::Right) => { 
-                    x = (x as i32+step as i32).rem_euclid(width as i32) as usize; 
-                }
-                VariableValue::Direction(Direction::Down) => { 
-                    y = (y as i32+step as i32).rem_euclid(height as i32) as usize; 
-                }
-                VariableValue::Direction(Direction::Up) => {
-                    y = (y as i32-step as i32).rem_euclid(height as i32) as usize; 
-                }
-                _ => {
-                    panic!("invalid type for direction: {:?}", step_val);
-                }
-            };
-            // println!(" MOVE: {} -> ({x},{y})", pos_val.to_string());
-            params[0].set_value(context, scope, VariableValue::Pos(x,y));
+    match d {
+        Direction::Left => {
+            pos.0 = (pos.0-step).rem_euclid(width); 
         }
-        x => {
-            panic!("unexpected type for move: {:?}", x);
+        Direction::Right => { 
+            pos.0 = (pos.0+step).rem_euclid(width); 
+        }
+        Direction::Down => { 
+            pos.1 = (pos.1+step).rem_euclid(height); 
+        }
+        Direction::Up => {
+            pos.1 = (pos.1-step).rem_euclid(height); 
         }
     }
+    params[0].set_value(context, scope, VariableValue::Pos(pos.0, pos.1));
 }
 
 pub fn move_pos(context: &mut Context, scope: &mut Stack, params: &mut Vec<Variable>) {
-    assert!(params.len() == 3, "expected 3 parameters, got {}", params.len());
-    let pos = &params[0];
-    let d = &params[1];
-    let step = &params[2];
-    let pos_val = pos.get_value(context, scope);
-    let d_val = d.get_value(context, scope);
-    let step_val = step.get_value(context, scope);
-    // get step
-    let step;
-    if let VariableValue::Int(i) = step_val {
-        step = i as usize;
-    } else {
-        panic!("invalid type for step: {:?} (expected Int)", step_val);
+    expect_param_count("restricted move", params, 3);
+    let par1 = &params[0].get_value(context, scope);
+    let par2 = &params[1].get_value(context, scope);
+    let par3 = &params[2].get_value(context, scope);
+    let mut pos = par1.into_pos();
+    let d = par2.into_direction();
+    let step = par3.into_int();
+    let width = context.get_width() as i32;
+    let height = context.get_height() as i32;
+    match d {
+        Direction::Left =>
+            pos.0 = (pos.0.saturating_sub(step)).max(width),
+        Direction::Right =>
+            pos.0 = (pos.0.saturating_add(step)).min(width),
+        Direction::Down =>
+            pos.1 = (pos.1.saturating_add(step)).min(height),
+        Direction::Up =>
+            pos.1 = (pos.1.saturating_sub(step)).max(height),
     }
-    match pos_val {
-        VariableValue::Pos(mut x, mut y) => {
-            match d_val {
-                VariableValue::Direction(Direction::Left) => { x = x.saturating_sub(step); }
-                VariableValue::Direction(Direction::Right) => { x = (x+step).min(context.get_width()); }
-                VariableValue::Direction(Direction::Down) => { y = (y+step).min(context.get_height()); }
-                VariableValue::Direction(Direction::Up) => { y = y.saturating_sub(step); }
-                _ => {
-                    panic!("invalid type for direction: {:?}", step_val);
-                }
-            };
-            params[0].set_value(context, scope, VariableValue::Pos(x,y));
-        }
-        x => {
-            panic!("unexpected type for move: {:?}", x);
-        }
-    }
+    params[0].set_value(context, scope, VariableValue::Pos(pos.0, pos.1));
 }
 
+pub fn move_by(context: &mut Context, scope: &mut Stack, params: &mut Vec<Variable>) {
+    expect_param_count("move by", params, 2);
+    let par1 = &params[0].get_value(context, scope);
+    let par2 = &params[1].get_value(context, scope);
+    let (mut x,mut y) = par1.into_pos();
+    let (dx,dy) = par2.into_pos();
+    x = x.saturating_add(dx);
+    y = y.saturating_add(dy);
+    params[0].set_value(context, scope, VariableValue::Pos(x,y));
+}

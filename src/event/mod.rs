@@ -44,6 +44,8 @@ impl Event {
             10 => draw_rect(context, scope, &mut self.params),
             11 => draw_effect_rect(context, scope, &mut self.params),
             12 => toggle_activeness(context, scope, action_activeness, &mut self.params),
+            13 => sub(context, scope, &mut self.params),
+            14 => move_by(context, scope, &mut self.params),
             _ => {
                 self.process_operation(context, scope, components, action_activeness, operations);
             }
