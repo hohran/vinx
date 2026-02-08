@@ -31,6 +31,8 @@ pub fn load_builtin_operations(aut: &mut Automaton) -> usize {
         seq!("toggle" String),
         // sub
         seq!("sub" Int "from" Int),
+        // move by
+        seq!("move" Pos "by" Pos),
         ];
     let mut la;
     let num_of_builtins = builtins.len();
