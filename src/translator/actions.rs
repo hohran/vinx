@@ -32,7 +32,7 @@ impl Translator {
         (active,onetime,timestamp,acc)
     }
 
-    fn get_action_events(&self, node: &Node) -> Vec<Event> {
+    fn get_action_events(&mut self, node: &Node) -> Vec<Event> {
         node.expect_kind("events", self);
         let mut events = vec![];
         let children = get_children(node);
@@ -46,7 +46,7 @@ impl Translator {
         events
     }
 
-    fn sequence_to_event(&self, node: &Node) -> Event {
+    fn sequence_to_event(&mut self, node: &Node) -> Event {
         assert!(node.kind() == "sequence", "unexpected type of node {}", node.kind());
         let mut params = vec![];
         let mut seq = vec![];
@@ -64,11 +64,9 @@ impl Translator {
                     }
                     seq.push(Word::Type(val.get_type()));
                 }
-                ";" => {},
                 x => panic!("unexpected type in sequence: {x}")
             }
         }
-        // println!("{:?}",seq_to_str(&seq));
         let Some(sv) = self.action_decision_automaton.run(&seq) else {
             eprintln!("{} invalid sequence: {}", "error:".color(colorized::Colors::RedFg), seq_to_str(&seq));
             eprintln!("{}:", self.file_manager.current_file().expect("error: could not retrieve file"));
@@ -76,10 +74,10 @@ impl Translator {
             exit(1);
         };
         if let SequenceValue::Operation(id) = sv {
-                if self.is_builtin_operation(*id) {
-                    Event::new(*id, params, vec![], VariableMap::new())
+                if self.is_builtin_operation(id) {
+                    Event::new(id, params, vec![], VariableMap::new())
                 } else {
-                    self.operations.get(id).expect(&format!("error: unknown operation {id}")).instantiate(params)
+                    self.operations.get(&id).expect(&format!("error: unknown operation {id}")).instantiate(params, &self.structures, &mut self.globals)
                 }
         } else {
             panic!("unexpected sequence value: {:?}", sv);
@@ -102,6 +100,10 @@ impl Translator {
     fn get_action_timestamp_and_acc(&self, children: &[Node], i: &mut usize) -> (Timestamp, Timestamp) {
         let q_node = children[*i];
         let quantifier = if q_node.kind() == "number" { *i += 1; self.node_to_int(&q_node) } else { 1 };
+        if quantifier < 0 {
+            panic!("error: negative number in trigger");
+        }
+        let quantifier = quantifier as usize;
         match self.text(&children[*i]) {
             "frame" | "frames" => (Timestamp::Frame(quantifier),Timestamp::Frame(0)),
             "s" | "second" | "seconds" => (Timestamp::Millis(quantifier*1000),Timestamp::Millis(0)),

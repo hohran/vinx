@@ -12,7 +12,6 @@ use crate::context::Context;
 pub enum VariableLocation {
     Scope,
     Static,
-    Component,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -32,9 +31,9 @@ impl<'a> Variable {
         Self { name: "".to_string(), location: VariableLocation::Static, val: Some(val.clone()), typ: val.get_type() }
     }
 
-    pub fn new_component(name: &str, component_type: usize) -> Self {
-        Self { name: name.to_string(), location: VariableLocation::Component, val: None, typ: VariableType::Component(component_type) }
-    }
+    // pub fn new_component(name: &str, component_type: usize) -> Self {
+    //     Self { name: name.to_string(), location: VariableLocation::Component, val: None, typ: VariableType::Component(component_type) }
+    // }
 
     pub fn is_static(&self) -> bool {
         self.location == VariableLocation::Static
@@ -48,7 +47,8 @@ impl<'a> Variable {
         self.location
     }
 
-    pub fn get_value(&self, context: &Context, scope: &Stack) -> VariableValue {
+    pub fn get_value(&self, scope: &Stack) -> VariableValue {
+        // println!("get {} ({})", self.name, self.typ.to_string());
         match self.location {
             VariableLocation::Static => { 
                 if let Some(v) = &self.val {
@@ -58,32 +58,26 @@ impl<'a> Variable {
                 }
             }
             VariableLocation::Scope => { 
-                match scope.get_variable(&self.name) {
+                match scope.get_variable_of_type(&self.name, self.get_type()) {
                     Some(v) => {
                         v.clone()
                     }
-                    None => { 
-                        if self.name == "$width" {
-                            return VariableValue::Int(context.get_width() as i32);
-                        }
-                        if self.name == "$height" {
-                            return VariableValue::Int(context.get_height() as i32);
-                        }
-                        panic!("error: could not find value of variable {}", &self.name);
-                    }
-                }
-            }
-            VariableLocation::Component => {
-                if let Some(v) = &self.val {
-                    v.clone()
-                } else {
-                    panic!("error: could not get component value");
+                    None => panic!("error: could not find value of variable {}", &self.name)
+                    // None => { 
+                    //     if self.name == "$width" {
+                    //         return VariableValue::Int(context.get_width() as i32);
+                    //     }
+                    //     if self.name == "$height" {
+                    //         return VariableValue::Int(context.get_height() as i32);
+                    //     }
+                    //     panic!("error: could not find value of variable {}", &self.name);
+                    // }
                 }
             }
         }
     }
 
-    pub fn get_value_of_type(&self, context: &Context, scope: &Stack, var_type: &VariableType) -> VariableValue {
+    pub fn get_value_of_type(&self, scope: &Stack, var_type: &VariableType) -> VariableValue {
         match self.location {
             VariableLocation::Static => { 
                 if let Some(v) = &self.val {
@@ -98,28 +92,22 @@ impl<'a> Variable {
                     Some(v) => {
                         v.clone()
                     }
-                    None => { 
-                        if self.name == "$width" {
-                            return VariableValue::Int(context.get_width() as i32);
-                        }
-                        if self.name == "$height" {
-                            return VariableValue::Int(context.get_height() as i32);
-                        }
-                        panic!("error: could not find value of variable {}", &self.name);
-                    }
-                }
-            }
-            VariableLocation::Component => {
-                if let Some(v) = &self.val {
-                    v.clone()
-                } else {
-                    panic!("error: could not get component value");
+                    None => panic!("error: could not find value of variable {}", &self.name)
+                    // None => { 
+                    //     if self.name == "$width" {
+                    //         return VariableValue::Int(context.get_width() as i32);
+                    //     }
+                    //     if self.name == "$height" {
+                    //         return VariableValue::Int(context.get_height() as i32);
+                    //     }
+                    //     panic!("error: could not find value of variable {}", &self.name);
+                    // }
                 }
             }
         }
     }
 
-    pub fn get_value_ref(&'a self, _context: &'a Context, scope: &'a Stack) -> &'a VariableValue {
+    pub fn get_value_ref(&'a self, scope: &'a Stack) -> &'a VariableValue {
         match self.location {
             VariableLocation::Static => { 
                 if let Some(v) = &self.val {
@@ -144,26 +132,19 @@ impl<'a> Variable {
                     }
                 }
             }
-            VariableLocation::Component => {
-                if let Some(v) = &self.val {
-                    v
-                } else {
-                    panic!("error: could not get component value");
-                }
-            }
         }
     }
 
-    pub fn set_value(&mut self, _context: &Context, scope: &mut Stack, new_val: VariableValue) {
+    pub fn set_value(&mut self, scope: &mut Stack, new_val: VariableValue) {
         let val = match self.location {
             VariableLocation::Static => { self.val.as_mut() }
             VariableLocation::Scope => {
-                scope.get_variable_mut(&self.name)
-            }
-            VariableLocation::Component => {
-                panic!("cannot set a component");   // FIXME maybe not necessary
+                scope.get_variable_of_type_mut(&self.name, self.get_type())
             }
         }.expect("variable not found");
+        // if val.get_type() != new_val.get_type() {
+        //     panic!("values are of incompatible types: {val:?} vs {new_val:?}");
+        // }
         if val.type_check(&new_val) == false {
             panic!("values are of incompatible types: {val:?} vs {new_val:?}");
         }
@@ -187,7 +168,6 @@ impl ToString for Variable {
         match self.location {
             VariableLocation::Scope => format!("{}",self.name),
             VariableLocation::Static => format!("{}",self.val.as_ref().expect("error: no value for static variable").to_string()),
-            VariableLocation::Component => "component".to_string(),
         }
     }
 }

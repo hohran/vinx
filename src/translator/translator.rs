@@ -3,7 +3,7 @@ use std::process::exit;
 use colorized::Color;
 use tree_sitter::Node;
 
-use crate::{action::Action, event::{Operations, component::Components}, translator::{file_manager::FileManager, get_children}, variable::{stack::Stack, values::VariableValue}};
+use crate::{action::Action, event::Operations, translator::{Sequence, StructureTemplate, file_manager::FileManager, get_children}, variable::{Variable, stack::{Stack, VariableMap}, types::VariableType, values::{Structure, VariableValue}}};
 
 use super::{automata::automaton::Automaton, builtins::load_builtin_operations, Word};
 
@@ -32,13 +32,14 @@ impl<'a> Kind for Node<'a> {
 pub struct Translator {
     parser: tree_sitter::Parser,
     pub globals: Stack,
-    pub components: Components,
     pub actions: Vec<Action>,
     pub action_decision_automaton: Automaton,
     pub operations: Operations,
+    pub structures: Vec<StructureTemplate>,
     pub _number_of_builtin_operations: usize,
+    pub _number_of_builtin_structures: usize,
     pub file_manager: FileManager,
-    // pub in_component: bool,
+    pub _unresolved_parameter_types: usize,
 }
 
 impl Translator {
@@ -74,8 +75,9 @@ impl Translator {
     }
 
     /// transforms into owned Translator
-    pub fn get(self) -> (Stack, Components,Vec<Action>,Operations) {
-        ( self.globals, self.components, self.actions, self.operations ) //, source_code: self.source_code }
+    pub fn get(self) -> (Stack,Vec<Action>,Operations) {
+        assert_eq!(self._unresolved_parameter_types,0);
+        ( self.globals, self.actions, self.operations ) //, source_code: self.source_code }
     }
 
     pub fn load_file(&mut self, filepath: &str) {
@@ -89,7 +91,21 @@ impl Translator {
         self.file_manager.finish_file();
     }
 
-    /// load all rules in node: variable definitions, actions, and declarations of operations and (in future) components
+    fn handle_definition(&mut self, node: &Node) {
+        node.expect_kind("definition", self);
+        let children = get_children(node);
+        let signature = &children[0];
+        let definition = &children[1];
+        // if definition contains operation definitions, it is structure
+        let is_structure = get_children(definition).iter().find(|n| n.kind() == "definition").is_some();
+        if is_structure {
+            self.parse_structure(signature, definition);
+        } else {
+            self.parse_operation(signature, definition);
+        }
+    }
+
+    /// load all rules in node: variable definitions, actions, and definitions of operations and (in future) components
     pub fn load_from_node(&mut self, node: &Node) {
         for rule in get_children(node) {
             match rule.kind() {
@@ -99,10 +115,8 @@ impl Translator {
                 "action" => {
                     self.get_action_definition(&rule);
                 }
-                "declaration" => {
-                    if rule.child_by_field_name("operation").is_some() {
-                        self.parse_operation(&rule);
-                    }
+                "definition" => {
+                    self.handle_definition(&rule);
                 }
                 "file_load" => {
                     let filepath_node = rule.child_by_field_name("filename").unwrap();
@@ -133,6 +147,35 @@ impl Translator {
         seq
     }
 
+    pub fn get_sequence_with_params(&self, node: &Node) -> (Sequence,Vec<Variable>) {
+        node.expect_kind("sequence", self);
+        let mut seq = vec![];
+        let mut params = vec![];
+        for n in get_children(node) {
+            match n.kind() {
+                "keyword" => {
+                    seq.push(Word::Keyword(self.text(&n).to_string()));
+                }
+                "value" => {
+                    let val = self.get_atomic_value(&n);
+                    seq.push(Word::Type(val.get_type()));
+                    if let Some(var_name) = self.get_variable_name(&n) {
+                        params.push(Variable::new(var_name, val.get_type()));
+                    } else {
+                        params.push(val.to_var());
+                    }
+                }
+                x => panic!("unexpected type in sequence: {x}")
+            }
+        }
+        (seq,params)
+    }
+
+    pub fn get_var_definition_name(&self, node: &Node) -> &str {
+        node.expect_kind("var_definition", self);
+        self.text(&node.child_by_field_name("lhs").unwrap())
+    }
+
     pub fn get_var_definition(&mut self, node: &Node) -> (String,VariableValue) {
         node.expect_kind("var_definition", self);
         let value = self.get_sequence_value(&node.child_by_field_name("rhs").unwrap());
@@ -141,9 +184,19 @@ impl Translator {
         self.globals.add_variable(name.clone(), value.clone());
         (name,value.clone())
     }
+
+    pub fn new_unresolved_variable(&mut self) -> usize {
+        self._unresolved_parameter_types += 1;
+        self._unresolved_parameter_types - 1
+    }
+
+    pub fn resolve_variables(&mut self, count: usize) {
+        assert!(self._unresolved_parameter_types >= count);
+        self._unresolved_parameter_types -= count;
+    }
 }
 
-pub fn parse(filepath: &str) -> (Stack,Components,Vec<Action>,Operations) {
+pub fn parse(filepath: &str) -> (Stack,Vec<Action>,Operations) {
     let mut parser = tree_sitter::Parser::new();
     parser.set_language(&tree_sitter_vinx::LANGUAGE.into()).expect("error: could not load vinx grammar");
     let mut aut = Automaton::new();
@@ -151,12 +204,14 @@ pub fn parse(filepath: &str) -> (Stack,Components,Vec<Action>,Operations) {
     let mut it = Translator {
         parser,
         globals: Stack::new(),
-        components: Components::new(),
         actions: vec![],
         action_decision_automaton: aut,
         operations: Operations::new(),
+        structures: Vec::new(),
         _number_of_builtin_operations: op_count,
+        _number_of_builtin_structures: 0,
         file_manager: FileManager::new(),
+        _unresolved_parameter_types: 0,
         // in_component: false,
     };
     it.load_file(filepath);

@@ -1228,8 +1228,6 @@ checksum = "c4013970217383f67b18aef68f6fb2e8d409bc5755227092d32efb0422ba24b8"
 [[package]]
 name = "tree-sitter-vinx"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "242fc0eb3ca430d4fcf1711733ac6749ec4250ef8ec6b22550cb1e8c88792a78"
 dependencies = [
  "cc",
  "tree-sitter-language",

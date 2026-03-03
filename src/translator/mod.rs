@@ -9,12 +9,62 @@ use tree_sitter::Node;
 mod builtins;
 // mod component_class;
 mod operations;
+mod structures;
 mod value;
 mod actions;
 mod file_manager;
 
-use crate::variable::types::VariableType;
+use crate::variable::{Variable, stack::{Stack, VariableMap}, types::VariableType, values::{Structure, VariableValue}};
 // use crate::vtype;
+
+#[derive(Debug)]
+pub struct StructureTemplate {
+    id: usize,
+    param_names: Vec<String>,
+    param_types: Vec<VariableType>,
+    members: Vec<(String, SequenceValue, Vec<Variable>)>,
+    // member_names: Vec<String>,
+    // member_types: Vec<VariableType>,
+    // - do it when sequences are allowed as assignments
+}
+
+impl StructureTemplate {
+    pub fn new(id: usize, param_names: Vec<String>, param_types: Vec<VariableType>, members: Vec<(String, SequenceValue, Vec<Variable>)>) -> Self {
+        Self { id, param_names, param_types, members }
+    }
+
+    pub fn instantiate(&self, params: Vec<Variable>, structures: &Vec<StructureTemplate>, stack: &mut Stack) -> Structure {
+        assert_eq!(params.len(), self.param_names.len());
+        // println!("instantiating structure {} with {params:?}", self.id);
+        stack.push_layer();
+        let mut members = VariableMap::new();
+        for i in 0..params.len() {
+            assert!(params[i].get_type() == &self.param_types[i]);
+            members.insert(self.param_names[i].clone(), params[i].get_value(stack));
+            stack.add_variable(self.param_names[i].clone(), params[i].get_value(stack));
+        }
+        for (name,val,ps) in &self.members {
+            let member_val = match val {
+                SequenceValue::Operation(_) => {
+                    todo!("operation return values");
+                }
+                SequenceValue::Component(id) => {
+                    let val = structures[*id].instantiate(ps.clone(), structures, stack);
+                    VariableValue::Structure(val)
+                }
+                SequenceValue::Value(_) => {
+                    assert_eq!(ps.len(), 1, "only 1 param for value");
+                    ps[0].get_value(stack)
+                }
+            };
+            members.insert(name.clone(), member_val.clone());
+            stack.add_variable(name.clone(), member_val);
+        }
+        stack.pop_layer();
+        let s = Structure::new(self.id, members);
+        s
+    }
+}
 
 /// Gets node children without comments
 fn get_children<'a>(node: &Node<'a>) -> Vec<Node<'a>> {
@@ -77,7 +127,7 @@ impl ToString for Word {
 }
 
 pub type Sequence = Vec<Word>;
-fn seq_to_str(seq: &Sequence) -> String {
+pub fn seq_to_str(seq: &Sequence) -> String {
     let mut ret = "".to_string();
     for w in seq {
         ret.push_str(&w.to_string());
@@ -107,7 +157,8 @@ macro_rules! word {
 pub enum SequenceValue {
     Operation(usize),
     Component(usize),
-    Value(usize),  // TODO: this would be nicer to remove: operations will have a return value and it will
+    Value(VariableType),
+    // Value(usize),  // TODO: this would be nicer to remove: operations will have a return value and it will
             // be computed that way. potential problem is handling calling of operations in
             // build time: could they draw?
 }

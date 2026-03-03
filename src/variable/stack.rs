@@ -16,30 +16,35 @@ impl Stack {
     }
 
     pub fn push_layer(&mut self) {
-        // println!("=== new layer ===");
         self.layers.push(HashMap::new());
     }
 
+    pub fn pretty_println(&self, string: String) {
+        let tab = 2;
+        print!("{:<1$}", "", self.layers.len()*tab);
+        println!("{string}");
+    }
+
     pub fn push_layer_with(&mut self, layer: VariableMap) {
-        // println!("=== new layer ===");
-        // for (name,v) in layer.iter() {
-        //     println!(" -> {name} ({})",v.get_type().to_string());
-        // }
         self.layers.push(layer);
     }
 
-    pub fn pop_layer(&mut self) -> VariableMap{
+    pub fn pop_layer(&mut self) -> VariableMap {
         assert!(!self.layers.is_empty());
         self.layers.pop().unwrap()
     }
 
-    fn get_top_layer(&mut self) -> &mut VariableMap{
+    fn get_top_layer(&mut self) -> &mut VariableMap {
         let top_index = self.layers.len()-1;
         &mut self.layers[top_index]
     }
 
+    pub fn top(&self) -> &VariableMap{
+        let top_index = self.layers.len()-1;
+        &self.layers[top_index]
+    }
+
     pub fn add_variable(&mut self, name: String, value: VariableValue) {
-        // println!(" push -> {name} ({})", value.get_type().to_string());
         let top = self.get_top_layer();
         assert!(top.insert(name.clone(), value).is_none(), "error: cannot add variable {name} because it already exists");
     }
@@ -71,9 +76,10 @@ impl Stack {
             VariableLocation::Static => {
                 vec_at.val.as_mut().expect("error: static variable without value")
             }
-            _ => {
-                panic!("todo: only scoped and static values are supported in vector assignments");
-            }
+            // _ => {
+
+            //     panic!("todo: only scoped and static values are supported in vector assignments");
+            // }
         };
         // println!(" at vec: {} -> {}", val_at.to_string(), new_value.to_string());
         *val_at = new_value;

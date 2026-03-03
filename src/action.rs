@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt::Display};
 
-use crate::{context::Context, event::{component::Components, Event, Operations}, variable::stack::Stack};
+use crate::{context::Context, event::{Event, Operations}, variable::stack::Stack};
 
 #[derive(Debug,Clone)]
 pub enum Timestamp {
@@ -84,12 +84,12 @@ impl Action {
         }
     }
 
-    pub fn trigger(&mut self, context: &mut Context, scope: &mut Stack, components: &mut Components, action_activeness: &mut HashMap<String,bool>, operations: &Operations ) {
+    pub fn trigger(&mut self, context: &mut Context, scope: &mut Stack, action_activeness: &mut HashMap<String,bool>, operations: &Operations ) {
         if self.onetime && self.activated { return; }
         match (&self.to_activate, &self.time_accumulator) {
             (Timestamp::Frame(i), Timestamp::Frame(acc)) => {
                 if *acc >= *i {
-                    self.process_events(context, scope, components, action_activeness, operations);
+                    self.process_events(context, scope, action_activeness, operations);
                     if self.onetime {
                         self.activated = true;
                     }
@@ -100,7 +100,7 @@ impl Action {
                 let mut tmp_acc = *acc;
                 let tmp_i = *i;
                 while tmp_acc >= tmp_i {
-                    self.process_events(context, scope, components, action_activeness, operations);
+                    self.process_events(context, scope, action_activeness, operations);
                     if self.onetime {
                         self.activated = true;
                         break;
@@ -113,9 +113,9 @@ impl Action {
         }
     }
 
-    fn process_events(&mut self, context: &mut Context, scope: &mut Stack, components: &mut Components, action_activeness: &mut HashMap<String,bool>, operations: &Operations) {
+    fn process_events(&mut self, context: &mut Context, scope: &mut Stack, action_activeness: &mut HashMap<String,bool>, operations: &Operations) {
         for event in &mut self.events {
-            event.process(context, scope, components, action_activeness, operations);
+            event.process(context, scope, action_activeness, operations);
         }
     }
 }

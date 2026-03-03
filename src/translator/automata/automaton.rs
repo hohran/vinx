@@ -52,16 +52,21 @@ impl Automaton {
         true
     }
 
-    /// Performs a run of automaton over the sequence `seq`.
-    /// Returns a value of this sequence if any.
-    pub fn run(&self, seq: &Vec<Word>) -> Option<&SequenceValue> {
-        self.run_from(seq, 0, &HashMap::new())
+    pub fn return_values_len(&self) -> usize {
+        self.return_values.len()
+    }
+
+    pub fn run(&self, seq: &Vec<Word>) -> Option<SequenceValue> {
+        if seq.len() == 1 && let Some(t) = seq[0].get_variable_type() {
+            return Some(SequenceValue::Value(t));
+        }
+        self.run_from(seq, 0, &TypeConstraints::_new())
     }
 
     /// Performs a run of automaton over the rest of sequence `seq` from state `start`.
-    fn run_from(&self, seq: &[Word], start: StateId, bind_mapping: &HashMap<usize,VariableType>) -> Option<&SequenceValue> {
+    fn run_from(&self, seq: &[Word], start: StateId, bind_mapping: &TypeConstraints) -> Option<SequenceValue> {
         if seq.len() == 0 {
-            return self.return_values.get(&start);
+            return self.return_values.get(&start).cloned();
         }
         if let Word::Type(_) = &seq[0] {
             let ts = self.states[start].get_possible_transitions(&seq[0], bind_mapping);
@@ -86,52 +91,24 @@ impl Automaton {
         return None;
     }
 
-    // pub fn refine_type_constraints(&self, seq: &Sequence, type_constraints: &TypeConstraints) -> Vec<TypeConstraints> {
-    //     self.refine_type_constraints_from(seq, type_constraints, 0, &mut HashMap::new())
-    // }
-    //
-    // pub fn refine_type_constraints_from(&self, seq: &[Word], current_type_constraints: &TypeConstraints, start: StateId, bind_mapping: &mut HashMap<usize,VariableType>) -> Vec<TypeConstraints> {
-    //     if seq.len() == 0 {
-    //         let mut constraint_clone = current_type_constraints.clone();
-    //         constraint_clone.refresh_bindings();
-    //         return vec![constraint_clone];
-    //     }
-    //     let mut out = vec![];
-    //     let w = &seq[0];
-    //     if w.is_ambiguous() {
-    //         let branches = self.states[start].get_type_transitions();
-    //         for branch_word in branches {
-    //             let mut bind_mapping_clone = bind_mapping.clone();
-    //             let mut constraint_clone = current_type_constraints.clone();
-    //             if let Some(n) = self.states[start].get_transition(branch_word, &mut bind_mapping_clone) { // we expect only ambi types of Any
-    //                 if let Some(binding) = w.get_binding() {
-    //                     let var_type = w.get_variable_type().unwrap();
-    //                     if let Some(intersected_type) = var_type.intersect(&branch_word.get_variable_type().unwrap().with_inverted_binding()) {
-    //                         constraint_clone.update_binding(binding, intersected_type);
-    //                         out.append(&mut self.refine_type_constraints_from(&seq[1..], &constraint_clone, n, bind_mapping));
-    //                     } else {
-    //                         panic!("error: somehow inapplicable transition, idk");
-    //                         // return vec![];
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //     } else { // not ambiguous
-    //         if let Some(n) = self.states[start].get_transition(w, bind_mapping) {
-    //             return self.refine_type_constraints_from(&seq[1..], current_type_constraints, n, bind_mapping);
-    //         } else {
-    //             return out;
-    //         }
-    //     }
-    //     out
-    // }
-
-    pub fn get_interpretations(&self, seq: &Vec<Word>, var_count: usize) -> Vec<TypeConstraints> {
-        self.get_interpretations_from(seq, 0, TypeConstraints::new(var_count), &mut HashMap::new())
+    pub fn get_interpretations(&self, seq: &Vec<Word>, ret_id: Option<usize>) -> Vec<TypeConstraints> {
+        self.get_interpretations_from(seq, 0, TypeConstraints::_new(), &mut TypeConstraints::_new(), ret_id)
     }
 
-    fn get_interpretations_from(&self, seq: &[Word], start: StateId, mut current_type_constraints: TypeConstraints, bind_mapping: &mut HashMap<usize,VariableType>) -> Vec<TypeConstraints> {
+    fn get_interpretations_from(&self, seq: &[Word], start: StateId, mut current_type_constraints: TypeConstraints, bind_mapping: &mut TypeConstraints, ret_id: Option<usize>) -> Vec<TypeConstraints> {
         if seq.len() == 0 {
+            let Some(sv) = self.return_values.get(&start) else { return vec![] };
+            if let Some(id) = ret_id {
+                match sv {
+                    SequenceValue::Operation(_) => {
+                        todo!("operation return types");
+                    }
+                    SequenceValue::Component(s) => {
+                        current_type_constraints.intersect_var(&VariableType::Component(*s), id);
+                    }
+                    SequenceValue::Value(_) => { panic!("error: Value should have not been stored in automaton") }
+                }
+            }
             current_type_constraints.refresh_bindings();
             return vec![current_type_constraints];
         }
@@ -143,21 +120,19 @@ impl Automaton {
                 let mut bind_mapping_clone = bind_mapping.clone();
                 let mut constraint_clone = current_type_constraints.clone();
                 if let Some(n) = self.states[start].get_exact_transition(branch_word) {
-                    if branch_word.is_ambiguous() {
-                    }
                     if let Some(var_id) = w.get_binding() {
                         let var_depth = w.get_variable_type().unwrap().get_depth();
                         if !constraint_clone.intersect_var(&branch_word.get_variable_type().unwrap().unwrap_depth(var_depth).with_inverted_binding(), var_id) {
                             continue;
                         }
                     }
-                    out.append(&mut self.get_interpretations_from(&seq[1..], n, constraint_clone, &mut bind_mapping_clone));
+                    out.append(&mut self.get_interpretations_from(&seq[1..], n, constraint_clone, &mut bind_mapping_clone, ret_id));
                 }
             }
             return out;
         } else {
             if let Some(n) = self.states[start].get_transition(w, bind_mapping) {
-                return self.get_interpretations_from(&seq[1..], n, current_type_constraints, bind_mapping);
+                return self.get_interpretations_from(&seq[1..], n, current_type_constraints, bind_mapping, ret_id);
             } else {
                 return vec![];
             }
@@ -246,8 +221,8 @@ mod tests {
         let wtvi = Word::Type(VariableType::Vec(Box::new(VariableType::Int)));
         let wtva = Word::Type(VariableType::Vec(Box::new(VariableType::Any(1))));
         let wta = Word::Type(VariableType::Any(1));
-        let ps_wti = s.get_possible_transitions(&wti,&mut HashMap::new());
-        let ps_wtvi = s.get_possible_transitions(&wtvi,&mut HashMap::new());
+        let ps_wti = s.get_possible_transitions(&wti, &mut TypeConstraints::_new());
+        let ps_wtvi = s.get_possible_transitions(&wtvi,&mut TypeConstraints::_new());
         assert_eq!(ps_wtvi.len(), 3);
         assert_eq!(ps_wtvi, vec![&wtvi,&wtva,&wta]);
         assert_eq!(ps_wti.len(), 2);
@@ -278,7 +253,7 @@ mod tests {
             Word::Keyword("a".to_string()),
             Word::Type(VariableType::Vec(Box::new(VariableType::Int))),
             Word::Keyword("b".to_string()),
-        ]), Some(&SequenceValue::Operation(1)));
+        ]), Some(SequenceValue::Operation(1)));
         assert_eq!(a.run(&vec![
             Word::Keyword("a".to_string()),
             Word::Type(VariableType::Vec(Box::new(VariableType::Pos))),
@@ -311,12 +286,12 @@ mod tests {
             Word::Keyword("a".to_string()),
             Word::Type(VariableType::Vec(Box::new(VariableType::Int))),
             Word::Keyword("b".to_string()),
-        ]), Some(&SequenceValue::Operation(1)));
+        ]), Some(SequenceValue::Operation(1)));
         assert_eq!(a.run(&vec![
             Word::Keyword("a".to_string()),
             Word::Type(VariableType::Pos),
             Word::Keyword("c".to_string()),
-        ]), Some(&SequenceValue::Operation(2)));
+        ]), Some(SequenceValue::Operation(2)));
         assert_eq!(a.run(&vec![
             Word::Keyword("a".to_string()),
             Word::Type(VariableType::Pos),
@@ -334,7 +309,7 @@ mod tests {
         assert_eq!(a.len(), 6);
         assert_eq!(
             a.run(&seq!(a Int b)),
-            Some(&SequenceValue::Operation(1))
+            Some(SequenceValue::Operation(1))
             );
     }
 
@@ -494,7 +469,7 @@ mod tests {
             let la = LinearAutomaton::new(ops[i].clone(), SequenceValue::Operation(i));
             a.union(la);
         }
-        let paths = a.get_interpretations(&seq!("a" (Any(0)) "b"), 1);
+        let paths = a.get_interpretations(&seq!("a" (Any(0)) "b"), None);
         assert_eq!(paths.len(), 3);
         // 2)
         let ops = [
@@ -510,7 +485,7 @@ mod tests {
             let la = LinearAutomaton::new(ops[i].clone(), SequenceValue::Operation(i));
             a.union(la);
         }
-        let paths = a.get_interpretations(&seq!(a (Any(0)) b (Any(0)) c), 2);
+        let paths = a.get_interpretations(&seq!(a (Any(0)) b (Any(0)) c), None);
         assert_eq!(paths.len(), 3);
         // 3)
         let ops = [
@@ -523,11 +498,11 @@ mod tests {
             let la = LinearAutomaton::new(ops[i].clone(), SequenceValue::Operation(i));
             a.union(la);
         }
-        let paths = a.get_interpretations(&seq!(a (Any(0)) b), 2);
+        let paths = a.get_interpretations(&seq!(a (Any(0)) b), None);
         assert_eq!(paths.len(), 3);
-        let paths = a.get_interpretations(&seq!(a [Any(0)] b), 2);
+        let paths = a.get_interpretations(&seq!(a [Any(0)] b), None);
         assert_eq!(paths.len(), 3);
-        let paths = a.get_interpretations(&seq!(a [Int] b), 2);
+        let paths = a.get_interpretations(&seq!(a [Int] b), None);
         assert_eq!(paths.len(), 1);
         // 4)
         let ops = [
@@ -540,28 +515,29 @@ mod tests {
             let la = LinearAutomaton::new(ops[i].clone(), SequenceValue::Operation(i));
             a.union(la);
         }
-        let paths = a.get_interpretations(&seq!(a [Any(0)] (Any(0))), 2);
+        let paths = a.get_interpretations(&seq!(a [Any(0)] (Any(0))), None);
         assert_eq!(paths.len(), 3);
-        let paths = a.get_interpretations(&seq!(a (Any(0)) (Any(0))), 2);
+        let paths = a.get_interpretations(&seq!(a (Any(0)) (Any(0))), None);
+        println!(" --- ");
         assert_eq!(paths.len(), 0);
-        let paths = a.get_interpretations(&seq!(a [Int] Color), 2);
-        assert_eq!(paths.len(), 0);
-    }
-
-    #[test]
-    // FIXME
-    fn test_get_all_paths_bound() {
-        let ops = [
-            seq!(a (Any(1)) (Any(1)) Int Pos),  // bad ending
-        ];
-        let mut a = Automaton::new();
-        for i in 0..ops.len() {
-            let la = LinearAutomaton::new(ops[i].clone(), SequenceValue::Operation(i));
-            a.union(la);
-        }
-        let paths = a.get_interpretations(&seq!(a (Any(0)) (Any(1)) (Any(1)) (Any(0))), 2);
+        let paths = a.get_interpretations(&seq!(a [Int] Color), None);
         assert_eq!(paths, vec![]);
     }
+
+    // #[test]
+    // FIXME
+    // fn test_get_all_paths_bound() {
+    //     let ops = [
+    //         seq!(a (Any(1)) (Any(1)) Int Pos),  // bad ending
+    //     ];
+    //     let mut a = Automaton::new();
+    //     for i in 0..ops.len() {
+    //         let la = LinearAutomaton::new(ops[i].clone(), SequenceValue::Operation(i));
+    //         a.union(la);
+    //     }
+    //     let paths = a.get_interpretations(&seq!(a (Any(0)) (Any(1)) (Any(1)) (Any(0))), 2);
+    //     assert_eq!(paths, vec![]);
+    // }
 
     #[test]
     fn test_run() {

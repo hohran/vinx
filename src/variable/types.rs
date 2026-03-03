@@ -1,5 +1,7 @@
 use rsframe::vfx::video::Pixel;
 
+use crate::variable::values::Structure;
+
 use super::values::{Direction, VariableValue};
 
 #[macro_export]
@@ -28,6 +30,7 @@ pub enum VariableType {
     Any(usize),
     /// Type for user defined structures
     Component(usize),
+    SelfReference,
     /// Error type for type inference
     None,
 }
@@ -45,6 +48,7 @@ impl ToString for VariableType {
             VariableType::Vec(x) => format!("[{}]",x.to_string()),
             VariableType::Component(x) => format!("Component({})",x.to_string()),
             VariableType::None => "None".to_string(),
+            VariableType::SelfReference => "<self reference>".to_string(),
         }
     }
 }
@@ -88,7 +92,8 @@ impl VariableType {
             VariableType::String => { VariableValue::String("".to_string()) }
             VariableType::Effect => { VariableValue::Effect(crate::variable::values::Effect::Blur) }
             VariableType::Any(x) => { VariableValue::Any(*x) }
-            VariableType::Component(x) => { VariableValue::Component(*x) }
+            VariableType::Component(x) => { VariableValue::Structure(Structure::default(*x)) }
+            VariableType::SelfReference => { VariableValue::SelfReference }
             VariableType::None => { panic!("error: tried to instantiate None type") }
         }
     }
@@ -142,6 +147,19 @@ impl VariableType {
             (VariableType::Vec(a),VariableType::Vec(b)) => a.is_subset_of(b),
             _ => false
         }
+    }
+
+    /// Check whether self is assignable to other
+    /// Int to Int -> true
+    /// Pos to Any -> true
+    /// Pos to Int -> false
+    ///
+    /// This function should be updated with more complex type system
+    pub fn is_assignable_to(&self, other: &Self) -> bool {
+        if let VariableType::Any(_) = other { 
+            return true;
+        }
+        return self == other;
     }
 
     /// Get binding of ambiguous types

@@ -1,6 +1,4 @@
-use std::collections::HashMap;
-
-use crate::{ translator::Word, variable::types::VariableType};
+use crate::{ translator::{Word, type_constraints::TypeConstraints}, variable::types::VariableType};
 
 pub type StateId = usize;
 
@@ -36,11 +34,11 @@ impl State {
     /// Get the applicability of `s` on a transition over `t`.
     /// The higher the applicability, the more applicable this symbol is for the given transition.
     /// If `None` is returned, the symbol is not applicable.
-    fn transition_applicability(t: &Word, s: &Word, bind_mapping: &HashMap<usize,VariableType>) -> Option<StateId> {
-        return Self::_transition_applicability(t, s, bind_mapping, true);
+    fn transition_applicability(t: &Word, s: &Word, bind_mapping: &TypeConstraints) -> Option<StateId> {
+        return Self::transition_applicability_rec(t, s, bind_mapping, true);
     }
 
-    fn _transition_applicability(t: &Word, s: &Word, bind_mapping: &HashMap<usize,VariableType>, unwind_any: bool) -> Option<StateId> {
+    fn transition_applicability_rec(t: &Word, s: &Word, bind_mapping: &TypeConstraints, unwind_any: bool) -> Option<StateId> {
         if t == s {
             return Some(usize::MAX);    // if s is Any, it will only map to any
         }
@@ -50,19 +48,20 @@ impl State {
                     if unwind_any == false {
                         return Some(0);
                     }
-                    if let Some(t) = bind_mapping.get(&any_binding) {
-                        if let Some(app) = Self::_transition_applicability(&Word::Type(t.clone()), s, bind_mapping, false) {
-                            return Some(app.saturating_sub(1));
-                        } else {
-                            return None;
-                        }
+                    let bind_value = bind_mapping.at(any_binding);
+                    if bind_value == VariableType::Any(any_binding) {   // unset binding
+                        return Some(0);
                     }
-                    return Some(0);
+                    if let Some(app) = Self::transition_applicability_rec(&Word::Type(bind_value), s, bind_mapping, false) {
+                        return Some(app.saturating_sub(1));
+                    } else {
+                        return None;
+                    }
                 }
                 match (&x,&y) {
                     (VariableType::Vec(xn),VariableType::Vec(yn)) => {
                         // TODO: think about this
-                        if let Some(app) = Self::_transition_applicability(&Word::Type(*xn.clone()), &Word::Type(*yn.clone()), bind_mapping, unwind_any) {
+                        if let Some(app) = Self::transition_applicability_rec(&Word::Type(*xn.clone()), &Word::Type(*yn.clone()), bind_mapping, unwind_any) {
                             if app < 10_000 {
                                 return Some(app+2)
                             } else {
@@ -77,7 +76,6 @@ impl State {
             _ => None,
         }
     }
-    
     /// Get state for transition `t`, if such transition exists.
     pub fn get_exact_transition(&self, t: &Word) -> Option<StateId> {
         for (wt,n) in &self.transitions {
@@ -151,16 +149,15 @@ impl State {
     // }
 
     /// Get the most fitting next state for symbol `t`.
-    pub fn get_transition(&self, t: &Word, bind_mapping: &mut HashMap<usize,VariableType>) -> Option<StateId> {
+    pub fn get_transition(&self, t: &Word, bind_mapping: &mut TypeConstraints) -> Option<StateId> {
         if let Word::Type(_) = t {
             self.get_transition_for_type(t, bind_mapping)
         } else {
             self.get_exact_transition(t)
         }
     }
-
     /// Get the most fitting next state for symbol `t`, which represents a variable type
-    fn get_transition_for_type(&self, t: &Word, bind_mapping: &mut HashMap<usize,VariableType>) -> Option<StateId> {
+    fn get_transition_for_type(&self, t: &Word, bind_mapping: &mut TypeConstraints) -> Option<StateId> {
         assert!(t.is_type());
         let mut best: Option<(StateId,usize,&Word)> = None;
         // get most fitting (best) transition
@@ -181,11 +178,9 @@ impl State {
             if wt.is_ambiguous() {
                 let binding = wt.get_binding().unwrap();
                 // update binding
-                if bind_mapping.get(&binding).is_none() {
-                    let depth = wt.get_depth();
-                    let new_binding_value = t.get_variable_type().unwrap().unwrap_depth(depth);
-                    bind_mapping.insert(binding,new_binding_value);
-                }
+                let depth = wt.get_depth();
+                let new_binding_value = t.get_variable_type().unwrap().unwrap_depth(depth);
+                bind_mapping.intersect_var(&new_binding_value, binding);
             }
             return Some(n);
         }
@@ -200,7 +195,7 @@ impl State {
 
     /// Get all transitions from this state, using the symbol `s`.
     /// Returned transitions are ordered from the most fitting to the least fitting.
-    pub fn get_possible_transitions(&self, s: &Word, bind_mapping: &HashMap<usize,VariableType>) -> Vec<&Word> {
+    pub fn get_possible_transitions(&self, s: &Word, bind_mapping: &TypeConstraints) -> Vec<&Word> {
         let mut v = vec![];
         let mut apps = vec![];
         for (t,_) in &self.transitions {
@@ -238,12 +233,13 @@ mod tests {
         s.add_transition(word!(Any(1)), 2);
         // s.add_transition(word!(Any(2)), 3);
         s.add_transition(word!(Pos), 4);
-        let mut bind_mapping = HashMap::new();
-        bind_mapping.insert(1, vtype!(Int));
-        let pos_trans = s.get_possible_transitions(&word!(Int), &mut bind_mapping);
+        let mut bind_mapping = TypeConstraints::_new();
+        bind_mapping.intersect_var(&vtype!(Int), 1);
+        let pos_trans = s.get_possible_transitions(&word!(Int), &bind_mapping);
         assert_eq!(pos_trans, [&word!(Int),&word!(Any(1))]);
-        bind_mapping.insert(1, vtype!(Pos));
-        let pos_trans = s.get_possible_transitions(&word!(Int), &mut bind_mapping);
+        bind_mapping = TypeConstraints::_new();
+        bind_mapping.intersect_var(&vtype!(Pos), 1);
+        let pos_trans = s.get_possible_transitions(&word!(Int), &bind_mapping);
         assert_eq!(pos_trans, [&word!(Int)]);
     }
 }

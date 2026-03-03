@@ -1,7 +1,7 @@
 use rsframe::vfx::video::Pixel;
 use tree_sitter::Node;
 
-use crate::{translator::{SequenceValue, get_children, translator::Kind}, variable::{Variable, values::{Direction, Effect, VariableValue}}};
+use crate::{translator::{SequenceValue, get_children, seq_to_str, translator::Kind}, variable::{Variable, values::{Direction, Effect, VariableValue}}};
 
 use super::{translator::Translator, Word};
 
@@ -27,7 +27,11 @@ impl Translator {
             "position" => self.pos_to_val(&val),
             "color" => self.color_to_val(&val),
             "effect" => self.effect_to_val(&val),
-            "variable" => self.globals.get_variable(self.text(&val)).expect(&format!("error: unknown variable {}", self.text(&val))).clone(),
+            "variable" => {
+                let var_name = self.text(&val);
+                let val = self.globals.get_variable(var_name).expect(&format!("error: unknown variable {}", self.text(&val))).clone();
+                val
+            }
             "direction" => self.direction_to_val(&val),
             "number" => VariableValue::Int(self.node_to_int(&val) as i32),
             "string" => VariableValue::String(self.node_to_string(&val)),
@@ -45,7 +49,7 @@ impl Translator {
     }
 
 
-    pub fn get_sequence_value(&self, node: &Node) -> VariableValue {
+    pub fn get_sequence_value(&mut self, node: &Node) -> VariableValue {
         node.expect_kind("sequence", self);
         let children = get_children(node);
         if children.len() == 1 {
@@ -61,14 +65,19 @@ impl Translator {
                 "value" => {
                     let val = self.get_atomic_value(&n);
                     seq.push(Word::Type(val.get_type()));
-                    params.push(val);
+                    params.push(val.to_var());
                 }
                 x => panic!("unexpected type in sequence: {x}")
             }
         }
-        let sv = self.action_decision_automaton.run(&seq).expect("error: invalid sequence");
+        let ret = self.action_decision_automaton.run(&seq);
+        let Some(sv) = ret else {
+            panic!("error: invalid sequence: {}", seq_to_str(&seq));
+        };
         match sv {
-            SequenceValue::Component(id) => VariableValue::Component(*id),
+            SequenceValue::Component(id) => {
+                VariableValue::Structure(self.structures[id].instantiate(params, &self.structures, &mut self.globals))
+            }
             _ => panic!("error: unexpected sequence value {:?}", sv)
         }
     }
@@ -164,7 +173,7 @@ impl Translator {
         todo!("error: color_code_to_val yet to be implemented");
     }
 
-    pub fn node_to_int(&self, node: &Node) -> usize {
+    pub fn node_to_int(&self, node: &Node) -> i32 {
         self.text(&node).parse().expect(&format!("error reading number value of node {}",node.to_string()))
     }
 

@@ -1,8 +1,8 @@
-use std::fmt::Display;
+use std::{cmp::max, fmt::Display};
 
 use crate::variable::types::VariableType;
 
-#[derive(Debug,PartialEq, Eq, Clone)]
+#[derive(Debug,PartialEq, Eq, Clone, Hash)]
 pub struct TypeConstraints {
     types: Vec<VariableType>,
 }
@@ -23,12 +23,42 @@ impl TypeConstraints {
         Self { types }
     }
 
+    pub fn _new() -> Self {
+        Self { types: vec![] }
+    }
+
     pub fn from(types: Vec<VariableType>) -> Self {
         Self { types }
     }
 
+    pub fn cut_to(self, to: usize) -> Self {
+        Self::from(self.types[..to].to_vec())
+    }
+
+    pub fn cut_from(self, from: usize) -> Self {
+        Self::from(self.types[from..].to_vec())
+    }
+
+    pub fn at(&self, at: usize) -> VariableType {
+        if at < self.types.len() {
+            self.types[at].clone()
+        } else {
+            VariableType::Any(at)
+        }
+    }
+
     pub fn get_types(&self) -> &Vec<VariableType> {
         &self.types
+    }
+
+    pub fn resize_to(&mut self, new_size: usize) {
+        let current_size = self.types.len();
+        if new_size == current_size {
+            return;
+        }
+        for i in current_size..new_size {
+            self.types.push(VariableType::Any(i));
+        }
     }
 
     /// Set binding numbers of all ambiguous types, so that they are ascending and starting at 0.
@@ -47,21 +77,6 @@ impl TypeConstraints {
         }
     }
 
-    // Refine all types of with given binding with new_type.
-    // Returns: Vector of all changed variables
-    pub fn update_binding(&mut self, binding: usize, new_type: VariableType) -> Vec<usize> {
-        let mut out = vec![];
-        for i in 0..self.types.len() {
-            let vt = &mut self.types[i];
-            let old = vt.clone();
-            vt.set_binding_type(binding, &new_type);
-            if !old.strictly_matches(&vt) {
-                out.push(i);
-            }
-        }
-        out
-    }
-
     pub fn strictly_matches(&self, other: &Self) -> bool {
         for i in 0..self.types.len() {
             if !self.types[i].strictly_matches(&other.types[i]) {
@@ -72,59 +87,10 @@ impl TypeConstraints {
     }
 
     /// Refine all types of with given binding with new_type.
-    pub fn _update_binding(&mut self, binding: usize, new_type: VariableType) {
+    pub fn update_binding(&mut self, binding: usize, new_type: VariableType) {
         for i in 0..self.types.len() {
             let vt = &mut self.types[i];
             vt.set_binding_type(binding, &new_type);
-        }
-    }
-
-    /// If self[at] (e.g., Any(0)) is a superset of other[at] (e.g., Int), replace every occurrence
-    /// of self[at] in self, with other[at]
-    /// so self = [Any(0) Any(0) Pos] would change to [Int Int Pos]
-    /// Returns: Vector of changed types (in our examle: [0,1])
-    fn infer_bindings_at(&mut self, other: &Self, at: usize) -> Vec<usize> {
-        let self_at = &self.types[at];
-        let other_at = &other.types[at];
-        if other.types[at].is_subset_of(&self.types[at]) {
-            // disallow that Any(0) is assignable with [Any(0)]
-            if self_at.get_binding() == other_at.with_inverted_binding().get_binding() && self_at.get_depth() != other_at.get_depth() {
-                self.types[at] = VariableType::None;
-                return vec![];
-            }
-            let depth = self.types[at].get_depth();     // since self in other: other has always lower depth
-            let mut updated = self.update_binding(
-                self.types[at].get_binding()                   // binding of current type
-                .expect("error: expected to be ambiguous"),  // if it is a superset, it should always be ambiguous (it will have a binding number)
-                other.types[at]                  // for the current type
-                .unwrap_depth(depth)            // this is the part to update with
-                .with_inverted_binding()        // invert binding so that it does not get mixed up with currently used bindings (if it is ambiguous)
-            );
-            // remove currently processed index
-            while let Some(rm) = updated.iter().position(|x| *x >= at) {
-                updated.remove(rm);
-                }
-            updated
-        } else {
-            vec![]
-        }
-    }
-
-    /// Iterativelly refine ambiguous datatypes of both type constraints.
-    /// Example:
-    /// self  = \[Any(0)  Int   Any(0)]
-    /// other = \[Any(0) Any(1) Any(1)]
-    /// after, both are \[Int Int Int]
-    /// This function does not throw errors for nonintersectable types, 
-    /// so self = \[Int] and other = \[Pos] would do nothing.
-    fn infer_bindings(&mut self, other: &mut Self) {
-        let mut to_intersect: Vec<usize> = (0..self.types.len()).collect();
-        while !to_intersect.is_empty() {
-            let i = to_intersect.pop().unwrap();
-            let mut updated = self.infer_bindings_at(other, i);
-            to_intersect.append(&mut updated);
-            updated = other.infer_bindings_at(self, i);
-            to_intersect.append(&mut updated);
         }
     }
 
@@ -143,7 +109,7 @@ impl TypeConstraints {
                 return false;
             }
             let depth = self_at.get_depth();     // since self in other: other has always lower depth
-            self._update_binding(
+            self.update_binding(
                 self.types[at].get_binding()                   // binding of current type
                 .expect("error: expected to be ambiguous"),  // if it is a superset, it should always be ambiguous (it will have a binding number)
                 other.types[at]                  // for the current type
@@ -155,11 +121,13 @@ impl TypeConstraints {
     }
 
     pub fn intersect(mut self, mut other: Self) -> Option<Self> {
-        assert_eq!(self.types.len(), other.types.len());
+        let len = max(self.types.len(), other.types.len());
+        self.resize_to(len);
+        other.resize_to(len);
         loop {
             let mut self_c = self.clone();
             let mut other_c = other.clone();
-            for i in 0..self.types.len() {
+            for i in 0..len {
                 if !self_c.intersect_at(&other, i) {
                     return None;
                 }
@@ -187,30 +155,10 @@ impl TypeConstraints {
         Some(out)
     }
 
-    /// [ Any(1), Any(1) ] + [ Any(2), Int ] -> [ Int, Int ]
-    /// [Int Pos] + [Any(0) Any(0)] -> None
-    pub fn _intersect(mut self, mut other: Self) -> Option<Self> {
-        println!("intersect {self} + {other}");
-        assert_eq!(self.types.len(), other.types.len());
-        let mut types: Vec<VariableType> = vec![];
-        self.infer_bindings(&mut other);
-        for i in 0..self.types.len() {
-            if let Some(vt) = self.types[i].intersect(&other.types[i]) {
-                types.push(vt);
-            } else {
-                return None;
-            }
-        }
-        let mut out = Self::from(types);
-        out.refresh_bindings();
-        println!(" = {out}");
-        Some(out)
-    }
-
     /// Intersects variable with var_id.
     /// Returns if it is intersectable with var_type
     pub fn intersect_var(&mut self, var_type: &VariableType, var_id: usize) -> bool {
-        assert!(var_id < self.types.len(), "variable with invalid id {var_id}");
+        self.resize_to(var_id+1);
         let var = &self.types[var_id];
         if let Some(prod) = var.intersect(var_type) {
             self.types[var_id] = prod;
@@ -251,12 +199,12 @@ mod tests {
         assert_eq!(tc.types[3].get_binding(), Some(1));
     }
 
-    #[test]
-    fn test_infer_bindings() {
-        let mut tc1 = constaint![[(Any(0))] (Any(0))];
-        let mut tc2 = constaint![[(Any(0))] (Any(1))];
-        tc1.infer_bindings(&mut tc2);
-    }
+    // #[test]
+    // fn test_infer_bindings() {
+    //     let mut tc1 = constaint![[(Any(0))] (Any(0))];
+    //     let mut tc2 = constaint![[(Any(0))] (Any(1))];
+    //     tc1.infer_bindings(&mut tc2);
+    // }
 
     #[test]
     fn test_update_binding() {

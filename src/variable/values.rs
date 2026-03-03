@@ -2,6 +2,8 @@ use std::fmt::Display;
 
 use rsframe::vfx::video::Pixel;
 
+use crate::variable::stack::{Stack, VariableMap};
+
 use super::{types::VariableType, Variable};
 
 #[derive(Debug,Clone,Copy,PartialEq)]
@@ -72,10 +74,41 @@ impl Coordinate {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Structure {
+    pub id: usize,
+    members: VariableMap,
+}
+
+impl Structure {
+    pub fn new(id: usize, members: VariableMap) -> Self {
+        Self { id, members }
+    }
+
+    pub fn default(id: usize) -> Self {
+        Self { id, members: VariableMap::new() }
+    }
+
+    pub fn populate_stack(&self, stack: &mut Stack) {
+        for (n,v) in &self.members {
+            stack.add_variable(n.clone(), v.clone());
+        }
+        // stack.push_layer_with(self.members.clone()); alternative ?
+    }
+
+    pub fn update(&mut self, stack: &mut Stack) {
+        let member_names: Vec<String> = self.members.iter().map(|(n,_)| n.clone()).collect();
+        for n in member_names {
+            let v = stack.get_variable(&n).unwrap().clone();
+            self.members.insert(n, v);
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum VariableValue {
     Any(usize),  // helper type for translator
     Int(i32),   // maybe change to usize
-    Pos(usize, usize),
+    Pos(i32, i32),
     String(String),
     // LeftRightPos(usize),
     // UpDownPos(usize),
@@ -83,11 +116,12 @@ pub enum VariableValue {
     Effect(Effect),
     Direction(Direction),
     /// Type for user defined structures
-    Component(usize),
+    Structure(Structure),
+    SelfReference,
     Vec(Vec<Variable>),
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Direction {
     Left,
     Right,
@@ -106,7 +140,7 @@ impl ToString for Direction {
     }
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Effect {
     Blur,
     Random,
@@ -142,9 +176,15 @@ impl VariableValue {
             Self::Color(p) => { format!("{{{},{},{}}}",p.r,p.g,p.b) }
             Self::Effect(e) => { e.to_string() }
             Self::Direction(d) => { d.to_string() }
-            Self::Component(i) => { format!("component({i})") }
+            Self::Structure(s) => { 
+                let mut map_str = String::new();
+                for (n,v) in &s.members {
+                    map_str += &(n.to_string() + "=>" + &v.to_string() + ", ");
+                }
+                format!("<struct({}) {map_str}>",s.id) }
             Self::Vec(v) => { let vs: Vec<String> = v.iter().map(|vv| vv.to_string()).collect(); format!("[{}]",vs.join(",")) }
             Self::Any(i) => { format!("Any({i})") }
+            Self::SelfReference => { format!("<self reference>") }
         }
     }
 
@@ -156,7 +196,8 @@ impl VariableValue {
             Self::String(_) => VariableType::String,
             Self::Effect(_) => VariableType::Effect,
             Self::Direction(_) => VariableType::Direction,
-            Self::Component(i) => VariableType::Component(*i),
+            Self::Structure(s) => VariableType::Component(s.id),
+            Self::SelfReference => VariableType::SelfReference,
             Self::Vec(v) => {
                 if v.len() == 0 {
                     panic!("cannot determine type of empty vector");
@@ -175,5 +216,56 @@ impl VariableValue {
 
     pub fn to_var(&self) -> Variable {
         Variable::new_static(self.clone())
+    }
+
+    /** Function for conversion to type **/
+
+    pub fn into_string(&self) -> &str {
+        let Self::String(s) = self else {
+            panic!();
+        };
+        s
+    }
+
+    pub fn into_int(&self) -> i32 {
+        let Self::Int(i) = self else {
+            panic!();
+        };
+        *i
+    }
+
+    pub fn into_pos(&self) -> (i32,i32) {
+        let Self::Pos(x, y) = self else {
+            panic!();
+        };
+        (*x,*y)
+    }
+
+    pub fn into_vec(&self) -> &Vec<Variable> {
+        let Self::Vec(v) = self else {
+            panic!();
+        };
+        v
+    }
+
+    pub fn into_direction(&self) -> Direction {
+        let Self::Direction(d) = self else {
+            panic!();
+        };
+        *d
+    }
+
+    pub fn into_color(&self) -> Pixel {
+        let Self::Color(c) = self else {
+            panic!();
+        };
+        *c
+    }
+
+    pub fn into_effect(&self) -> Effect {
+        let Self::Effect(e) = self else {
+            panic!();
+        };
+        *e
     }
 }

@@ -10,7 +10,6 @@ pub mod context;
 pub mod video;
 pub mod translator;
 pub mod variable;
-// pub mod error;
 
 fn get_action_activeness(actions: &Vec<action::Action>) -> HashMap<String,bool> {
     let mut action_activeness: HashMap<String,bool> = HashMap::new();
@@ -25,7 +24,7 @@ fn get_action_activeness(actions: &Vec<action::Action>) -> HashMap<String,bool> 
 }
 
 pub fn run(media_file: String, command_file: String, output_path: String) {
-    let (mut globals, mut components, mut actions, operations) = parse(&command_file);
+    let (mut globals, mut actions, operations) = parse(&command_file);
     // println!("--- actions ---");
     // for op in actions.iter() {
     //     println!("{}", op);
@@ -44,11 +43,8 @@ pub fn run(media_file: String, command_file: String, output_path: String) {
                 continue;
             }
             a.step(1);     // TODO derive millis from framerate
-            a.trigger(&mut context, &mut globals, &mut components, &mut action_activeness, &operations);
+            a.trigger(&mut context, &mut globals, &mut action_activeness, &operations);
         }
-    }
-    for _c in components.values_mut() {
-        // c.step(1, &mut context);
     }
     let video = context.get_video();
     video.save(output_path.to_string(), 24, false, "ffmpeg");
