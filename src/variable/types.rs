@@ -1,5 +1,3 @@
-use rsframe::vfx::video::Pixel;
-
 use crate::variable::values::Structure;
 
 use super::values::{Direction, VariableValue};
@@ -88,7 +86,7 @@ impl VariableType {
             VariableType::Int => { VariableValue::Int(0) }
             VariableType::Pos => { VariableValue::Pos(0, 0) }
             VariableType::Direction => { VariableValue::Direction(Direction::Left) }
-            VariableType::Color => { VariableValue::Color(Pixel::black()) }
+            VariableType::Color => { VariableValue::Color([0,0,0].into()) }
             VariableType::String => { VariableValue::String("".to_string()) }
             VariableType::Effect => { VariableValue::Effect(crate::variable::values::Effect::Blur) }
             VariableType::Any(x) => { VariableValue::Any(*x) }

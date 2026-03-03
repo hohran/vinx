@@ -6,8 +6,6 @@ use stack::Stack;
 use types::VariableType;
 use values::VariableValue;
 
-use crate::context::Context;
-
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum VariableLocation {
     Scope,

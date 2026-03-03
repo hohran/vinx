@@ -22,7 +22,7 @@ pub struct Args {
 
 fn main() {
     let args = Args::parse();
-    
+
     if args.list {
         println!("list of possible events:
   restricted move Pos Dir by Int                - move a position, but stay in bounds of the frame

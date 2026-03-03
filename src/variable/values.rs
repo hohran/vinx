@@ -1,10 +1,13 @@
 use std::fmt::Display;
 
-use rsframe::vfx::video::Pixel;
+// use rsframe::vfx::video::Pixel;
+use image::Rgb;
 
 use crate::variable::stack::{Stack, VariableMap};
 
 use super::{types::VariableType, Variable};
+
+pub type Color = Rgb<u8>;
 
 #[derive(Debug,Clone,Copy,PartialEq)]
 pub struct Coordinate {
@@ -112,7 +115,7 @@ pub enum VariableValue {
     String(String),
     // LeftRightPos(usize),
     // UpDownPos(usize),
-    Color(Pixel),
+    Color(Color),
     Effect(Effect),
     Direction(Direction),
     /// Type for user defined structures
@@ -173,7 +176,7 @@ impl VariableValue {
             Self::String(s) => { format!("\"{s}\"") }
             // Self::UpDownPos(i) => { format!("{i}") }
             // Self::LeftRightPos(i) => { format!("{i}") }
-            Self::Color(p) => { format!("{{{},{},{}}}",p.r,p.g,p.b) }
+            Self::Color(p) => { format!("{{{},{},{}}}",p.0[0],p.0[1],p.0[2]) }
             Self::Effect(e) => { e.to_string() }
             Self::Direction(d) => { d.to_string() }
             Self::Structure(s) => { 
@@ -255,7 +258,7 @@ impl VariableValue {
         *d
     }
 
-    pub fn into_color(&self) -> Pixel {
+    pub fn into_color(&self) -> Color {
         let Self::Color(c) = self else {
             panic!();
         };

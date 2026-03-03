@@ -17,11 +17,11 @@ impl Context {
     }
 
     pub fn get_width(&self) -> usize {
-        self.video.width
+        self.video.width() as usize
     }
 
     pub fn get_height(&self) -> usize {
-        self.video.height
+        self.video.height() as usize
     }
 
     pub fn step(&mut self) {

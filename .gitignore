@@ -9,6 +9,7 @@ debug
 
 # resources
 *.png
+*.jpg
 *.mp4
 *.mkv
 !examples/*.mp4

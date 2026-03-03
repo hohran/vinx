@@ -1,4 +1,4 @@
-use rsframe::vfx::video::Pixel;
+use image::Rgb;
 use tree_sitter::Node;
 
 use crate::{translator::{SequenceValue, get_children, seq_to_str, translator::Kind}, variable::{Variable, values::{Direction, Effect, VariableValue}}};
@@ -152,17 +152,17 @@ impl Translator {
 
     fn color_name_to_val(&self, node: &Node) -> VariableValue {
         match self.text(node) {
-            "red" => VariableValue::Color(Pixel::red()),
-            "green" => VariableValue::Color(Pixel::green()),
-            "blue" => VariableValue::Color(Pixel::blue()),
-            "yellow" => VariableValue::Color(Pixel { r: 255, g: 225, b: 53 }),
-            "black" => VariableValue::Color(Pixel { r: 0, g: 0, b: 0 }),
-            "white" => VariableValue::Color(Pixel { r: 255, g: 255, b: 255 }),
-            "orange" => VariableValue::Color(Pixel { r: 255, g: 165, b: 0 }),
-            "pink" => VariableValue::Color(Pixel { r: 255, g: 192, b: 203 }),
-            "purple" => VariableValue::Color(Pixel { r: 128, g: 0, b: 128 }),
-            "brown" => VariableValue::Color(Pixel { r: 165, g: 42, b: 42 }),
-            "cyan" => VariableValue::Color(Pixel { r: 0, g: 255, b: 255 }),
+            "red" => VariableValue::Color(Rgb([255,0,0])),
+            "green" => VariableValue::Color(Rgb([0,255,0])),
+            "blue" => VariableValue::Color(Rgb([0,0,255])),
+            "yellow" => VariableValue::Color(Rgb([255,225,53])),
+            "black" => VariableValue::Color(Rgb([0,0,0])),
+            "white" => VariableValue::Color(Rgb([255,255,255])),
+            "orange" => VariableValue::Color(Rgb([255,165,0])),
+            "pink" => VariableValue::Color(Rgb([255,192,203])),
+            "purple" => VariableValue::Color(Rgb([128,0,128])),
+            "brown" => VariableValue::Color(Rgb([165,42,42])),
+            "cyan" => VariableValue::Color(Rgb([0,255,255])),
             x => {
                 panic!("error: unknown color name {}",x);
             }
