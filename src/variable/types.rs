@@ -1,4 +1,6 @@
-use crate::variable::values::Structure;
+use std::fmt::Display;
+
+use crate::{variable::values::Structure, video::Frame};
 
 use super::values::{Direction, VariableValue};
 
@@ -11,7 +13,7 @@ macro_rules! vtype {
     ( Color ) => { VariableType::Color };
     ( Direction ) => { VariableType::Direction };
     ( Effect ) => { VariableType::Effect };
-    ( Component($i:expr) ) => { VariableType::Component($i) };
+    ( Structure($i:expr) ) => { VariableType::Structure($i) };
     ( Any ( $i:expr ) ) => { VariableType::Any($i) };
     ( ( $($x:tt)+ ) ) => { vtype!($($x)+) };
 }
@@ -24,29 +26,28 @@ pub enum VariableType {
     String,
     Effect,
     Direction,
+    Image,
     Vec(Box<VariableType>),
     Any(usize),
     /// Type for user defined structures
-    Component(usize),
+    Structure(usize),
     SelfReference,
-    /// Error type for type inference
-    None,
 }
 
-impl ToString for VariableType {
-    fn to_string(&self) -> String {
+impl Display for VariableType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            VariableType::Int => "Int".to_string(),
-            VariableType::Pos => "Pos".to_string(),
-            VariableType::Color => "Color".to_string(),
-            VariableType::Effect => "Effect".to_string(),
-            VariableType::Direction => "Dir".to_string(),
-            VariableType::String => "Str".to_string(),
-            VariableType::Any(x) => format!("Any({})",x.to_string()),
-            VariableType::Vec(x) => format!("[{}]",x.to_string()),
-            VariableType::Component(x) => format!("Component({})",x.to_string()),
-            VariableType::None => "None".to_string(),
-            VariableType::SelfReference => "<self reference>".to_string(),
+            VariableType::Int => write!(f, "Int"),
+            VariableType::Pos => write!(f, "Pos"),
+            VariableType::Color => write!(f, "Color"),
+            VariableType::Effect => write!(f, "Effect"),
+            VariableType::Direction => write!(f, "Dir"),
+            VariableType::String => write!(f, "Str"),
+            VariableType::Image => write!(f, "Image"),
+            VariableType::Any(x) => write!(f, "Any({})",x),
+            VariableType::Vec(x) => write!(f, "[{}]",x),
+            VariableType::Structure(x) => write!(f, "Structure({})",x),
+            VariableType::SelfReference => write!(f, "<self reference>"),
         }
     }
 }
@@ -54,7 +55,7 @@ impl ToString for VariableType {
 impl PartialEq for VariableType {
     fn eq(&self, other: &Self) -> bool {
         match (self,other) {
-            (VariableType::Component(x),VariableType::Component(y)) => x==y,
+            (VariableType::Structure(x),VariableType::Structure(y)) => x==y,
             (VariableType::Any(_),VariableType::Any(_)) => true,
             (VariableType::Vec(x),VariableType::Vec(y)) => {
                 x == y
@@ -65,7 +66,7 @@ impl PartialEq for VariableType {
 }
 
 impl VariableType {
-    /// Returns whether a contains Any
+    /// Returns whether it contains Any
     /// Int -> false
     /// Any(_) -> true
     /// [Any(_)] -> true
@@ -82,17 +83,17 @@ impl VariableType {
     /// Pos -> Pos(0,0)
     pub fn default(&self) -> VariableValue {
         match &self {
-            VariableType::Vec(x) => { VariableValue::Vec(vec![x.default().to_var()]) }
-            VariableType::Int => { VariableValue::Int(0) }
-            VariableType::Pos => { VariableValue::Pos(0, 0) }
-            VariableType::Direction => { VariableValue::Direction(Direction::Left) }
-            VariableType::Color => { VariableValue::Color([0,0,0].into()) }
-            VariableType::String => { VariableValue::String("".to_string()) }
-            VariableType::Effect => { VariableValue::Effect(crate::variable::values::Effect::Blur) }
-            VariableType::Any(x) => { VariableValue::Any(*x) }
-            VariableType::Component(x) => { VariableValue::Structure(Structure::default(*x)) }
-            VariableType::SelfReference => { VariableValue::SelfReference }
-            VariableType::None => { panic!("error: tried to instantiate None type") }
+            VariableType::Vec(x) => VariableValue::Vec(vec![x.default().to_var()]),
+            VariableType::Int => VariableValue::Int(0),
+            VariableType::Pos => VariableValue::Pos(0, 0),
+            VariableType::Direction => VariableValue::Direction(Direction::Left),
+            VariableType::Color => VariableValue::Color([0,0,0].into()),
+            VariableType::String => VariableValue::String("".to_string()),
+            VariableType::Image => VariableValue::Image(Frame::new(0,0)),
+            VariableType::Effect => VariableValue::Effect(crate::variable::values::Effect::Blur),
+            VariableType::Any(x) => VariableValue::Any(*x),
+            VariableType::Structure(x) => VariableValue::Structure(Structure::default(*x)),
+            VariableType::SelfReference => VariableValue::SelfReference,
         }
     }
 
@@ -103,14 +104,8 @@ impl VariableType {
     /// Any(1) + Any(2) -> Any(1)
     /// Any(1) + [Any(1)] -> None !!! think about it
     pub fn intersect(&self, other: &Self) -> Option<Self> {
-        // println!("intersect {} + {}", self.to_string(), other.to_string());
         match (self,other) {
-            (VariableType::Vec(x), VariableType::Vec(y)) => {
-                if let Some(t) = x.intersect(y) {
-                    return Some(VariableType::Vec(Box::new(t)));
-                }
-                None
-            },
+            (VariableType::Vec(x), VariableType::Vec(y)) => x.intersect(y).map(|t| VariableType::Vec(Box::new(t))),
             (VariableType::Any(x), t) | (t, VariableType::Any(x)) => {
                 if let Some(y) = t.get_binding() {
                     if y == *x && self.get_depth() != other.get_depth() {
@@ -119,7 +114,6 @@ impl VariableType {
                 }
                 Some(t.clone())
             },
-            (VariableType::None, _) | (_, VariableType::None) => None,
             _ => {
                 if self == other { 
                     Some(self.clone()) 
@@ -154,8 +148,8 @@ impl VariableType {
     ///
     /// This function should be updated with more complex type system
     pub fn is_assignable_to(&self, other: &Self) -> bool {
-        if let VariableType::Any(_) = other { 
-            return true;
+        if other.get_binding().is_some() {
+            return self.get_depth() >= other.get_depth();
         }
         return self == other;
     }
@@ -172,8 +166,8 @@ impl VariableType {
         }
     }
 
-    /// for ambiguous types: convert binding x into MAX-x
-    /// this is done so that bindings from different context dont get mixed up
+    /// For ambiguous types: convert binding x into MAX-x
+    /// This is done so that bindings from a different context dont get mixed up
     pub fn with_inverted_binding(&self) -> Self {
         match self {
             VariableType::Any(x) => VariableType::Any(usize::MAX - *x),
@@ -189,7 +183,8 @@ impl VariableType {
     /// Pos + 22 -> Pos
     pub fn set_binding(&mut self, x: usize) {
         match self {
-            VariableType::Any(_) => *self = VariableType::Any(usize::min(x, usize::MAX-x)),
+            // VariableType::Any(_) => *self = VariableType::Any(usize::min(x, usize::MAX-x)), why was it like this?
+            VariableType::Any(_) => *self = VariableType::Any(x),
             VariableType::Vec(v) => v.set_binding(x),
             _ => {}
         }
@@ -210,15 +205,13 @@ impl VariableType {
         }
     }
 
-    /// strictly_matches(Any(0), Any(1)) -> false
-    /// normally Any(0) == Any(1) -> true
+    /// Checks whether one type is identical to other (including the bindings).
     pub fn strictly_matches(&self, other: &Self) -> bool {
         self == other && self.get_binding() == other.get_binding()
     }
 
     /// Int -> 0
     /// \[Pos] -> 1
-    /// \[\[\[Any(42)]]] -> 3
     pub fn get_depth(&self) -> usize {
         let mut x = self;
         let mut depth = 0;
@@ -235,12 +228,15 @@ impl VariableType {
         }
     }
 
-    pub fn unwrap_depth(&self, mut depth: usize) -> Self {
+    /// Unwrap this type by `depth`.
+    /// \[Int] - 1 => Int
+    /// \[\[Pos]] - 1 => \[Pos]
+    pub fn unwrap_depth(&self, mut depth: usize) -> &Self {
         let mut x = self;
         loop {
-            if depth == 0 { return x.clone() }
+            if depth == 0 { return x }
             if let VariableType::Vec(nx) = x {
-                x = nx;
+                x = nx.as_ref();
                 depth -= 1;
             } else {
                 panic!("error: {:?} is not deep enough", self);
@@ -320,9 +316,9 @@ mod tests {
         let v1 = vtype!(Any(1));
         let v2 = vtype!(Any(2));
         assert_eq!(v1,v2);
-        // Component(usize),
-        let v1 = vtype!(Component(1));
-        let v2 = vtype!(Component(1));
+        // Structure(usize),
+        let v1 = vtype!(Structure(1));
+        let v2 = vtype!(Structure(1));
         assert_eq!(v1,v2);
     }
 

@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use crate::{ translator::{Sequence, automata::state::StateId, type_constraints::TypeConstraints}, variable::types::VariableType};
+use crate::{ event::Operations, translator::{automata::state::StateId, sequence::Sequence, type_constraints::TypeConstraints}};
 
-use super::{super::{SequenceValue, Word}, linear_automaton::LinearAutomaton, state::State};
+use super::{super::{SequenceValue, Word}, state::State};
 
 pub struct Automaton {
     states: Vec<State>,
@@ -22,40 +22,28 @@ impl Automaton {
     }
 
     /// Performs a union with a linear automaton `la`.
-    /// Returns `true` if the union changed the automaton (it created a new state, or set a return
-    /// value on already existing state), and `false` otherwise.
-    /// This method will panic if a return value is tried to be changed.
-    pub fn union(&mut self, la: LinearAutomaton) -> bool {
-        let mut branched = false;
+    /// This function will return `false`, if another sequence was overwritten.
+    pub fn union(&mut self, seq: Sequence, val: SequenceValue) -> bool {
         let mut cur_state = 0;
-        for transition in la.transitions {
-            let next_state = self.states[cur_state].get_exact_transition(&transition);
+        for transition in seq.into_vec() {
+            let next_state = self.states[cur_state].use_transition(&transition);
             if let Some(n) = next_state {
                 cur_state = n;
                 continue;
             }
             // if current state does not have this transition
-            branched = true;
             let new_state = self.new_state();
             self.states[cur_state].add_transition(transition, new_state);
             cur_state = new_state;
         }
-        // after iteration
-        if branched {
-            self.return_values.insert(cur_state, la.return_value);
-            return true;
-        }
-        if self.return_values.get(&cur_state).is_some() {
+        if self.return_values.contains_key(&cur_state) {
             return false;
         }
-        self.return_values.insert(cur_state, la.return_value);
+        self.return_values.insert(cur_state, val);
         true
     }
 
-    pub fn return_values_len(&self) -> usize {
-        self.return_values.len()
-    }
-
+    /// Performs a run of automaton over sequence `seq` and returns its value (if it exists).
     pub fn run(&self, seq: &Vec<Word>) -> Option<SequenceValue> {
         if seq.len() == 1 && let Some(t) = seq[0].get_variable_type() {
             return Some(SequenceValue::Value(t));
@@ -63,83 +51,86 @@ impl Automaton {
         self.run_from(seq, 0, &TypeConstraints::_new())
     }
 
-    /// Performs a run of automaton over the rest of sequence `seq` from state `start`.
-    fn run_from(&self, seq: &[Word], start: StateId, bind_mapping: &TypeConstraints) -> Option<SequenceValue> {
-        if seq.len() == 0 {
-            return self.return_values.get(&start).cloned();
+    /// Performs a run of automaton over the rest of sequence `seq` from state `cur`.
+    fn run_from(&self, seq: &[Word], cur: StateId, binding: &TypeConstraints) -> Option<SequenceValue> {
+        if seq.is_empty() {
+            return self.return_values.get(&cur).cloned();
         }
-        if let Word::Type(_) = &seq[0] {
-            let ts = self.states[start].get_possible_transitions(&seq[0], bind_mapping);
+        let w = &seq[0];
+        let rest = &seq[1..];
+        if w.is_type() {
+            let ts = self.states[cur].get_ordered_transitions(w, binding);
             for t in ts {
                 if t.is_ambiguous() {
-                    let mut bind_mapping_clone = bind_mapping.clone();
-                    if let Some(new_start) = self.states[start].get_transition(t, &mut bind_mapping_clone) {
-                        if let Some(s) = self.run_from(&seq[1..], new_start, &bind_mapping_clone) {
+                    let mut binding_clone = binding.clone();
+                    if let Some(next_state) = self.states[cur].apply(t.get(), &mut binding_clone) {
+                        if let Some(s) = self.run_from(rest, next_state, &binding_clone) {
                             return Some(s);
                         }
                     }
                 } else {
-                    let new_start = self.states[start].get_exact_transition(t).unwrap();
-                    if let Some(s) = self.run_from(&seq[1..], new_start, bind_mapping) {
-                        return Some(s);
+                    let next = self.states[cur].use_transition(t.get()).unwrap();
+                    if let Some(sv) = self.run_from(rest, next, binding) {
+                        return Some(sv);
                     }
                 }
             }
-        } else if let Some(n) = self.states[start].get_exact_transition(&seq[0]) {
-            return self.run_from(&seq[1..], n, bind_mapping);
+        } else if let Some(next) = self.states[cur].use_transition(w) {
+            return self.run_from(rest, next, binding);
         }
         return None;
     }
 
-    pub fn get_interpretations(&self, seq: &Vec<Word>, ret_id: Option<usize>) -> Vec<TypeConstraints> {
-        self.get_interpretations_from(seq, 0, TypeConstraints::_new(), &mut TypeConstraints::_new(), ret_id)
+    /// Get all possible interpretations of sequence `seq`.
+    /// If this sequence is assigned to a variable, `ret_id` should be set to its id.
+    pub fn get_interpretations(&self, seq: &Vec<Word>, ret_id: Option<usize>, operations: &Operations) -> Vec<TypeConstraints> {
+        if seq.len() == 1 && let Word::Type(t) = &seq[0] {
+            if let Some(r) = ret_id {
+                let mut tc = TypeConstraints::_new();
+                tc.intersect_var(r, t);
+                return vec![tc];
+            }
+        }
+        self.get_interpretations_from(seq, 0, TypeConstraints::_new(), TypeConstraints::_new(), ret_id, operations)
     }
 
-    fn get_interpretations_from(&self, seq: &[Word], start: StateId, mut current_type_constraints: TypeConstraints, bind_mapping: &mut TypeConstraints, ret_id: Option<usize>) -> Vec<TypeConstraints> {
-        if seq.len() == 0 {
-            let Some(sv) = self.return_values.get(&start) else { return vec![] };
-            if let Some(id) = ret_id {
-                match sv {
-                    SequenceValue::Operation(_) => {
-                        todo!("operation return types");
-                    }
-                    SequenceValue::Component(s) => {
-                        current_type_constraints.intersect_var(&VariableType::Component(*s), id);
-                    }
-                    SequenceValue::Value(_) => { panic!("error: Value should have not been stored in automaton") }
-                }
+    fn get_interpretations_from(&self, seq: &[Word], cur: StateId, mut cur_constraints: TypeConstraints, mut binding: TypeConstraints, ret_id: Option<usize>, operations: &Operations) -> Vec<TypeConstraints> {
+        if seq.is_empty() {
+            let Some(sv) = self.return_values.get(&cur) else { return vec![] };
+            if let Some(r) = ret_id {
+                cur_constraints.intersect_var(r, &sv.into_variable_type(operations));
             }
-            current_type_constraints.refresh_bindings();
-            return vec![current_type_constraints];
+            cur_constraints.refresh_bindings();
+            return vec![cur_constraints];
         }
-        let mut out = vec![];
         let w = &seq[0];
+        let rest = &seq[1..];
         if w.is_ambiguous() {
-            let branches = self.states[start].get_type_transitions();
-            for branch_word in branches {
-                let mut bind_mapping_clone = bind_mapping.clone();
-                let mut constraint_clone = current_type_constraints.clone();
-                if let Some(n) = self.states[start].get_exact_transition(branch_word) {
-                    if let Some(var_id) = w.get_binding() {
-                        let var_depth = w.get_variable_type().unwrap().get_depth();
-                        if !constraint_clone.intersect_var(&branch_word.get_variable_type().unwrap().unwrap_depth(var_depth).with_inverted_binding(), var_id) {
+            let mut out = vec![];
+            for t in self.states[cur].get_type_transitions() {
+                let binding_clone = binding.clone();
+                let mut constraint_clone = cur_constraints.clone();
+                if let Some(n) = self.states[cur].use_transition(t.get()) {
+                    if let Some(var) = w.get_binding() {
+                        let var_depth = w.get_type().unwrap().get_depth();
+                        if !constraint_clone.intersect_var(var, &t.get_type().unwrap_depth(var_depth).with_inverted_binding()) {
                             continue;
                         }
                     }
-                    out.append(&mut self.get_interpretations_from(&seq[1..], n, constraint_clone, &mut bind_mapping_clone, ret_id));
+                    out.append(&mut self.get_interpretations_from(rest, n, constraint_clone, binding_clone, ret_id, operations));
                 }
             }
             return out;
         } else {
-            if let Some(n) = self.states[start].get_transition(w, bind_mapping) {
-                return self.get_interpretations_from(&seq[1..], n, current_type_constraints, bind_mapping, ret_id);
+            if let Some(next) = self.states[cur].apply(w, &mut binding) {
+                return self.get_interpretations_from(rest, next, cur_constraints, binding, ret_id, operations);
             } else {
                 return vec![];
             }
         }
     }
 
-    /// Returns all sequences in a given automaton in form: (sequence, return_type).
+    /// Returns all sequences in the given automaton.
     #[allow(dead_code)]
     pub fn get_all_sequences(&self) -> Vec<(Sequence,SequenceValue)> {
         self.get_all_sequences_rec(0, &vec![])
@@ -149,11 +140,11 @@ impl Automaton {
     fn get_all_sequences_rec(&self, start: StateId, seq: &Vec<Word>) -> Vec<(Sequence,SequenceValue)> {
         let mut ret = vec![];
         if let Some(r) = self.return_values.get(&start) {
-            ret.push((seq.clone(),r.clone()));
+            ret.push((Sequence::from(seq.clone()),r.clone()));
         }
-        for (w,new_state) in self.states[start].get_all_transitions() {
+        for (t,new_state) in self.states[start].get_all_transitions() {
             let mut new_seq = seq.clone();
-            new_seq.push(w.clone());
+            new_seq.push(t.get().clone());
             ret.append(&mut self.get_all_sequences_rec(*new_state, &new_seq));
         }
         ret
@@ -164,24 +155,24 @@ impl Automaton {
 mod tests {
     use std::collections::HashMap;
 
-    use super::{Automaton, LinearAutomaton, State};
+    use super::{Automaton, State};
     use super::Word;
     use super::SequenceValue;
-    use crate::translator::type_constraints::TypeConstraints;
+    use crate::translator::sequence::Sequence;
     use crate::variable::types::VariableType;
     use crate::{seq,word,vtype};
 
     impl Automaton {
-        pub fn from(la: LinearAutomaton) -> Self {
+        pub fn from(la: (Sequence,SequenceValue)) -> Self {
             let mut states = vec![State::new()];
-            for t in &la.transitions {
+            for t in la.0.into_vec() {
                 let state_count = states.len();
                 let cur_state = state_count-1;
                 states.push(State::new());
-                states[cur_state].add_transition(t.clone(), state_count);
+                states[cur_state].add_transition(t, state_count);
             }
             let mut return_values = HashMap::new();
-            return_values.insert(states.len()-1, la.return_value);
+            return_values.insert(states.len()-1, la.1);
             Self { states, return_values }
         }
         pub fn len(&self) -> usize {
@@ -190,270 +181,84 @@ mod tests {
     }
 
     #[test]
-    fn test_box_behavior() {
-        let vt1 = VariableType::Vec(Box::new(VariableType::Int));
-        let vt2 = VariableType::Vec(Box::new(VariableType::Int));
-        let vt3 = VariableType::Vec(Box::new(VariableType::Any(1)));
-        let vt4 = VariableType::Vec(Box::new(VariableType::Vec(Box::new(VariableType::Int))));
-        let vt4_ = VariableType::Vec(Box::new(VariableType::Vec(Box::new(VariableType::Int))));
-        assert_eq!(vt1, vt2);
-        assert_ne!(vt1,vt3);
-        assert_ne!(vt1,vt4);
-        let w1 = Word::Type(vt1);
-        let w2 = Word::Type(vt2);
-        let w3 = Word::Type(vt3);
-        let w4 = Word::Type(vt4);
-        let w4_ = Word::Type(vt4_);
-        assert_eq!(w1, w2);
-        assert_ne!(w1, w3);
-        assert_ne!(w1, w4);
-        assert_eq!(w4, w4_);
-    }
-
-    #[test]
-    fn test_state_get_possible_transitions() {
-        let mut s = State::new();
-        s.add_transition(Word::Type(VariableType::Int), 1);
-        s.add_transition(Word::Type(VariableType::Vec(Box::new(VariableType::Int))), 2);
-        s.add_transition(Word::Type(VariableType::Vec(Box::new(VariableType::Any(1)))), 3);
-        s.add_transition(Word::Type(VariableType::Any(1)), 4);
-        let wti = Word::Type(VariableType::Int);
-        let wtvi = Word::Type(VariableType::Vec(Box::new(VariableType::Int)));
-        let wtva = Word::Type(VariableType::Vec(Box::new(VariableType::Any(1))));
-        let wta = Word::Type(VariableType::Any(1));
-        let ps_wti = s.get_possible_transitions(&wti, &mut TypeConstraints::_new());
-        let ps_wtvi = s.get_possible_transitions(&wtvi,&mut TypeConstraints::_new());
-        assert_eq!(ps_wtvi.len(), 3);
-        assert_eq!(ps_wtvi, vec![&wtvi,&wtva,&wta]);
-        assert_eq!(ps_wti.len(), 2);
-        assert_eq!(ps_wti, vec![&wti,&wta]);
-    }
-
-    #[test]
-    fn test_linear_automaton() {
-        let la = LinearAutomaton::new(vec![
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Vec(Box::new(VariableType::Int))),
-            Word::Keyword("b".to_string()),
-        ], SequenceValue::Operation(1));
-        assert_eq!(la.transitions.len(), 3);
-        assert_eq!(la.return_value, SequenceValue::Operation(1));
-    }
-
-    #[test]
     fn test_automaton_run() {
-        let la = LinearAutomaton::new(vec![
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Vec(Box::new(VariableType::Int))),
-            Word::Keyword("b".to_string()),
-        ], SequenceValue::Operation(1));
+        let la = (seq!("a" [Int] "b"), SequenceValue::Operation(1));
         let a = Automaton::from(la);
         assert_eq!(a.len(), 4);
-        assert_eq!(a.run(&vec![
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Vec(Box::new(VariableType::Int))),
-            Word::Keyword("b".to_string()),
-        ]), Some(SequenceValue::Operation(1)));
-        assert_eq!(a.run(&vec![
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Vec(Box::new(VariableType::Pos))),
-            Word::Keyword("b".to_string()),
-        ]), None);
-        assert_eq!(a.run(&vec![
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Vec(Box::new(VariableType::Int))),
-            Word::Keyword("c".to_string()),
-        ]), None);
+        assert_eq!(a.run(seq!("a" [Int] "b").get()), Some(SequenceValue::Operation(1)));
+        assert_eq!(a.run(seq!("a" [Pos] "b").get()), None);
+        assert_eq!(a.run(seq!("a" [Int] "c").get()), None);
     }
 
     #[test]
     fn test_automaton_union() {
-        let la1 = LinearAutomaton::new(vec![
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Vec(Box::new(VariableType::Int))),
-            Word::Keyword("b".to_string()),
-        ], SequenceValue::Operation(1));
-        let la2 = LinearAutomaton::new(vec![
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Pos),
-            Word::Keyword("c".to_string()),
-        ], SequenceValue::Operation(2));
+        let la1 = (seq!("a" [Int] "b"), SequenceValue::Operation(1));
+        let la2 = (seq!("a" Pos "c"), SequenceValue::Operation(2));
         let mut a = Automaton::from(la1);
         assert_eq!(a.len(), 4);
-        a.union(la2);
+        a.union(la2.0,la2.1);
         assert_eq!(a.len(), 6);
-        assert_eq!(a.run(&vec![
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Vec(Box::new(VariableType::Int))),
-            Word::Keyword("b".to_string()),
-        ]), Some(SequenceValue::Operation(1)));
-        assert_eq!(a.run(&vec![
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Pos),
-            Word::Keyword("c".to_string()),
-        ]), Some(SequenceValue::Operation(2)));
-        assert_eq!(a.run(&vec![
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Pos),
-            Word::Keyword("b".to_string()),
-        ]), None);
+        assert_eq!(a.run(seq!("a" [Int] "b").get()), Some(SequenceValue::Operation(1)));
+        assert_eq!(a.run(seq!("a" Pos "c").get()), Some(SequenceValue::Operation(2)));
+        assert_eq!(a.run(seq!("a" Pos "b").get()), None);
     }
 
     #[test]
     fn test_automaton_priority_choice() {
-        let la1 = LinearAutomaton::new(seq!(a Int b), SequenceValue::Operation(1));
-        let la2 = LinearAutomaton::new(seq!(a (Any(1)) b), SequenceValue::Operation(2));
+        let la1 = (seq!(a Int b), SequenceValue::Operation(1));
+        let la2 = (seq!(a (Any(0)) b), SequenceValue::Operation(2));
         let mut a = Automaton::from(la1);
         assert_eq!(a.len(), 4);
-        a.union(la2);
+        a.union(la2.0,la2.1);
         assert_eq!(a.len(), 6);
         assert_eq!(
-            a.run(&seq!(a Int b)),
+            a.run(seq!(a Int b).get()),
             Some(SequenceValue::Operation(1))
-            );
+        );
     }
 
     #[test]
     fn test_automaton_priority_choice_vec() {
-        let la1 = LinearAutomaton::new(vec![
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Vec(Box::new(VariableType::Int))),
-            Word::Keyword("b".to_string()),
-        ], SequenceValue::Operation(1));
-        let la2 = LinearAutomaton::new(vec![
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Any(1)),
-            Word::Keyword("b".to_string()),
-        ], SequenceValue::Operation(2));
-        let la3 = LinearAutomaton::new(vec![
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Vec(Box::new(VariableType::Any(1)))),
-            Word::Keyword("b".to_string()),
-        ], SequenceValue::Operation(3));
+        let la1 = (seq!("a" [Int] "b"), SequenceValue::Operation(1));
+        let la2 = (seq!("a" (Any(0)) "b"), SequenceValue::Operation(2));
+        let la3 = (seq!("a" [Any(0)] "b"), SequenceValue::Operation(3));
         let mut a = Automaton::from(la1);
         assert_eq!(a.len(), 4);
-        a.union(la2);
+        a.union(la2.0,la2.1);
         assert_eq!(a.len(), 6);
-        a.union(la3);
+        a.union(la3.0,la3.1);
         assert_eq!(a.len(), 8);
-        assert_eq!(a.run(&vec![
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Vec(Box::new(VariableType::Int))),
-            Word::Keyword("b".to_string()),
-        ]), Some(&SequenceValue::Operation(1)));
-        assert_ne!(a.run(&vec![
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Vec(Box::new(VariableType::Pos))),
-            Word::Keyword("c".to_string()),
-        ]), Some(&SequenceValue::Operation(3)));
-        assert_eq!(a.run(&vec![
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Int),
-            Word::Keyword("b".to_string()),
-        ]), Some(&SequenceValue::Operation(2)));
+        assert_eq!(a.run(seq!("a" [Int] "b").get()), Some(SequenceValue::Operation(1)));
+        assert_eq!(a.run(seq!("a" Int "b").get()), Some(SequenceValue::Operation(2)));
+        assert_eq!(a.run(seq!("a" [Pos] "b").get()), Some(SequenceValue::Operation(3)));
     }
 
     #[test]
     fn test_automaton_backtrace_small() {
-        let la1 = LinearAutomaton::new(seq!(a Int b), SequenceValue::Operation(1));
-        let la2 = LinearAutomaton::new(seq!(a (Any(1)) c), SequenceValue::Operation(2));
+        let la1 = (seq!(a Int b), SequenceValue::Operation(1));
+        let la2 = (seq!(a (Any(0)) c), SequenceValue::Operation(2));
         let mut a = Automaton::from(la1);
-        a.union(la2);
-        assert_eq!(a.run(&seq!(a Int c)), Some(&SequenceValue::Operation(2)));
+        a.union(la2.0,la2.1);
+        assert_eq!(a.run(seq!(a Int c).get()), Some(SequenceValue::Operation(2)));
     }
 
     #[test]
     fn test_automaton_backtrace_large() {
-        let la1 = LinearAutomaton::new(vec![
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Int),
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Int),
-            Word::Keyword("a".to_string()),
-        ], SequenceValue::Operation(1));
-        let la2 = LinearAutomaton::new(vec![
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Any(1)),
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Pos),
-            Word::Keyword("a".to_string()),
-        ], SequenceValue::Operation(2));
-        let la3 = LinearAutomaton::new(vec![
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Any(1)),
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Int),
-            Word::Keyword("a".to_string()),
-        ], SequenceValue::Operation(3));
-        let la4 = LinearAutomaton::new(vec![
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Int),
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Any(1)),
-            Word::Keyword("b".to_string()),
-        ], SequenceValue::Operation(4));
-        let la5 = LinearAutomaton::new(vec![
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Int),
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Pos),
-            Word::Keyword("b".to_string()),
-        ], SequenceValue::Operation(5));
+        let la1 = (seq!("a" Int "a" Int "a"), SequenceValue::Operation(1));
+        let la2 = (seq!("a" (Any(0)) "a" Pos "a"), SequenceValue::Operation(2));
+        let la3 = (seq!("a" (Any(0)) "a" Int "a"), SequenceValue::Operation(3));
+        let la4 = (seq!("a" Int "a" (Any(0)) "b"), SequenceValue::Operation(4));
+        let la5 = (seq!("a" Int "a" Pos "b"), SequenceValue::Operation(5));
         let mut a = Automaton::from(la1);
-        a.union(la2);
-        a.union(la3);
-        a.union(la4);
-        a.union(la5);
-        assert_eq!(a.run(&vec![
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Int),
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Int),
-            Word::Keyword("a".to_string()),
-        ]), Some(&SequenceValue::Operation(1)));
-        assert_eq!(a.run(&vec![
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Int),
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Pos),
-            Word::Keyword("a".to_string()),
-        ]), Some(&SequenceValue::Operation(2)));
-        assert_eq!(a.run(&vec![
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Color),
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Int),
-            Word::Keyword("a".to_string()),
-        ]), Some(&SequenceValue::Operation(3)));
-        assert_eq!(a.run(&vec![
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Int),
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Int),
-            Word::Keyword("b".to_string()),
-        ]), Some(&SequenceValue::Operation(4)));
-        assert_eq!(a.run(&vec![
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Int),
-            Word::Keyword("a".to_string()),
-            Word::Type(VariableType::Pos),
-            Word::Keyword("b".to_string()),
-        ]), Some(&SequenceValue::Operation(5)));
-    }
-
-    #[test]
-    fn test_get_type_transitions() {
-        let mut s = State::new();
-        s.add_transition(Word::Keyword("a".to_string()), 1);
-        s.add_transition(Word::Type(VariableType::Int), 2);
-        s.add_transition(Word::Type(VariableType::Vec(Box::new(VariableType::Int))), 3);
-        s.add_transition(Word::Keyword("b".to_string()), 4);
-        let tts = s.get_type_transitions();
-        assert_eq!(tts.len(), 2);
-        assert_eq!(tts, vec![
-            &Word::Type(VariableType::Int),
-            &Word::Type(VariableType::Vec(Box::new(VariableType::Int))),
-        ]);
+        a.union(la2.0,la2.1);
+        a.union(la3.0,la3.1);
+        a.union(la4.0,la4.1);
+        a.union(la5.0,la5.1);
+        assert_eq!(a.run(seq!("a" Int "a" Int "a").get()), Some(SequenceValue::Operation(1)));
+        assert_eq!(a.run(seq!("a" Int "a" Pos "a").get()), Some(SequenceValue::Operation(2)));
+        assert_eq!(a.run(seq!("a" Color "a" Int "a").get()), Some(SequenceValue::Operation(3)));
+        assert_eq!(a.run(seq!("a" Int "a" Int "b").get()), Some(SequenceValue::Operation(4)));
+        assert_eq!(a.run(seq!("a" Int "a" Pos "b").get()), Some(SequenceValue::Operation(5)));
     }
 
     #[test]
@@ -466,10 +271,10 @@ mod tests {
         ];
         let mut a = Automaton::new();
         for i in 0..ops.len() {
-            let la = LinearAutomaton::new(ops[i].clone(), SequenceValue::Operation(i));
-            a.union(la);
+            let la = (ops[i].clone(), SequenceValue::Operation(i));
+            a.union(la.0,la.1);
         }
-        let paths = a.get_interpretations(&seq!("a" (Any(0)) "b"), None);
+        let paths = a.get_interpretations(seq!("a" (Any(0)) "b").get(), None, &vec![]);
         assert_eq!(paths.len(), 3);
         // 2)
         let ops = [
@@ -482,10 +287,10 @@ mod tests {
         ];
         let mut a = Automaton::new();
         for i in 0..ops.len() {
-            let la = LinearAutomaton::new(ops[i].clone(), SequenceValue::Operation(i));
-            a.union(la);
+            let la = (ops[i].clone(), SequenceValue::Operation(i));
+            a.union(la.0,la.1);
         }
-        let paths = a.get_interpretations(&seq!(a (Any(0)) b (Any(0)) c), None);
+        let paths = a.get_interpretations(seq!(a (Any(0)) b (Any(0)) c).get(), None, &vec![]);
         assert_eq!(paths.len(), 3);
         // 3)
         let ops = [
@@ -495,14 +300,14 @@ mod tests {
         ];
         let mut a = Automaton::new();
         for i in 0..ops.len() {
-            let la = LinearAutomaton::new(ops[i].clone(), SequenceValue::Operation(i));
-            a.union(la);
+            let la = (ops[i].clone(), SequenceValue::Operation(i));
+            a.union(la.0,la.1);
         }
-        let paths = a.get_interpretations(&seq!(a (Any(0)) b), None);
+        let paths = a.get_interpretations(seq!(a (Any(0)) b).get(), None, &vec![]);
         assert_eq!(paths.len(), 3);
-        let paths = a.get_interpretations(&seq!(a [Any(0)] b), None);
+        let paths = a.get_interpretations(seq!(a [Any(0)] b).get(), None, &vec![]);
         assert_eq!(paths.len(), 3);
-        let paths = a.get_interpretations(&seq!(a [Int] b), None);
+        let paths = a.get_interpretations(seq!(a [Int] b).get(), None, &vec![]);
         assert_eq!(paths.len(), 1);
         // 4)
         let ops = [
@@ -512,39 +317,23 @@ mod tests {
         ];
         let mut a = Automaton::new();
         for i in 0..ops.len() {
-            let la = LinearAutomaton::new(ops[i].clone(), SequenceValue::Operation(i));
-            a.union(la);
+            let la = (ops[i].clone(), SequenceValue::Operation(i));
+            a.union(la.0,la.1);
         }
-        let paths = a.get_interpretations(&seq!(a [Any(0)] (Any(0))), None);
+        let paths = a.get_interpretations(seq!(a [Any(0)] (Any(0))).get(), None, &vec![]);
         assert_eq!(paths.len(), 3);
-        let paths = a.get_interpretations(&seq!(a (Any(0)) (Any(0))), None);
-        println!(" --- ");
+        let paths = a.get_interpretations(seq!(a (Any(0)) (Any(0))).get(), None, &vec![]);
         assert_eq!(paths.len(), 0);
-        let paths = a.get_interpretations(&seq!(a [Int] Color), None);
+        let paths = a.get_interpretations(seq!(a [Int] Color).get(), None, &vec![]);
         assert_eq!(paths, vec![]);
     }
 
-    // #[test]
-    // FIXME
-    // fn test_get_all_paths_bound() {
-    //     let ops = [
-    //         seq!(a (Any(1)) (Any(1)) Int Pos),  // bad ending
-    //     ];
-    //     let mut a = Automaton::new();
-    //     for i in 0..ops.len() {
-    //         let la = LinearAutomaton::new(ops[i].clone(), SequenceValue::Operation(i));
-    //         a.union(la);
-    //     }
-    //     let paths = a.get_interpretations(&seq!(a (Any(0)) (Any(1)) (Any(1)) (Any(0))), 2);
-    //     assert_eq!(paths, vec![]);
-    // }
-
     #[test]
     fn test_run() {
-        let la = LinearAutomaton::new(seq!("move" Pos Direction "by" Int), SequenceValue::Operation(1));
+        let la = (seq!("move" Pos Direction "by" Int), SequenceValue::Operation(1));
         let a = Automaton::from(la);
         let s = seq!("move" Pos Direction "by" Int);
-        let x = a.run(&s);
-        assert_eq!(x.unwrap(), &SequenceValue::Operation(1));
+        let x = a.run(s.get());
+        assert_eq!(x.unwrap(), SequenceValue::Operation(1));
     }
 }

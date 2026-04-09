@@ -1,6 +1,6 @@
 use std::{cmp::max, fmt::Display};
 
-use crate::variable::types::VariableType;
+use crate::variable::VariableType;
 
 #[derive(Debug,PartialEq, Eq, Clone, Hash)]
 pub struct TypeConstraints {
@@ -157,11 +157,11 @@ impl TypeConstraints {
 
     /// Intersects variable with var_id.
     /// Returns if it is intersectable with var_type
-    pub fn intersect_var(&mut self, var_type: &VariableType, var_id: usize) -> bool {
-        self.resize_to(var_id+1);
-        let var = &self.types[var_id];
+    pub fn intersect_var(&mut self, id: usize, var_type: &VariableType) -> bool {
+        self.resize_to(id+1);
+        let var = &self.types[id];
         if let Some(prod) = var.intersect(var_type) {
-            self.types[var_id] = prod;
+            self.types[id] = prod;
             true
         } else {
             false

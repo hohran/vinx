@@ -7,7 +7,7 @@ use rand::{Rng, distributions::Alphanumeric, thread_rng};
 use image::{ImageReader, ImageResult, Pixel, RgbImage};
 use rayon::prelude::*;
 use rayon::iter::IntoParallelRefIterator;
-use crate::variable::values::{Color, Effect};
+use crate::variable::{Color, Effect};
 use std::fs;
 
 pub type Frame = RgbImage;

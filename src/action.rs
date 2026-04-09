@@ -1,6 +1,6 @@
-use std::{collections::HashMap, fmt::Display};
+use std::collections::HashMap;
 
-use crate::{context::Context, event::{Event, Operations}, variable::stack::Stack};
+use crate::{context::Context, event::{Event, Operations}, variable::Stack};
 
 #[derive(Debug,Clone)]
 pub enum Timestamp {
@@ -19,14 +19,14 @@ pub struct Action {
     activated: bool,
 }
 
-impl Display for Action {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let onetime_str = if self.onetime { "at" } else { "every" };
-        let act_str = match self.to_activate { Timestamp::Frame(x) => format!("{x} frames"), Timestamp::Millis(x) => format!("{x} ms"), };
-        let ev_strs: Vec<String> = self.events.iter().map(|x| x.to_string_with_indent(4)).collect();
-        write!(f, "{onetime_str} {act_str} do {{\n  {}\n}}", ev_strs.join("\n  "))
-    }
-}
+// impl Display for Action {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         let onetime_str = if self.onetime { "at" } else { "every" };
+//         let act_str = match self.to_activate { Timestamp::Frame(x) => format!("{x} frames"), Timestamp::Millis(x) => format!("{x} ms"), };
+//         let ev_strs: Vec<String> = self.events.iter().map(|x| x.to_string_with_indent(4)).collect();
+//         write!(f, "{onetime_str} {act_str} do {{\n  {}\n}}", ev_strs.join("\n  "))
+//     }
+// }
 
 impl Action {
     pub fn new(name: String, active: bool, to_activate: Timestamp, time_accumulator: Timestamp, events: Vec<Event>, onetime: bool) -> Self {

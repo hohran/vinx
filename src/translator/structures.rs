@@ -2,9 +2,9 @@ use std::collections::HashSet;
 
 use tree_sitter::Node;
 
-use crate::{translator::{SequenceValue, StructureTemplate, automata::{automaton::Automaton, linear_automaton::LinearAutomaton}, get_children, operations::OperationRepr, seq_to_str, translator::Kind, type_constraints::TypeConstraints}, variable::{stack::VariableMap, types::VariableType, values::VariableValue}, word};
+use crate::{translator::{SequenceValue, StructureTemplate, automata::Automaton, get_children, operations::OperationRepr, sequence::Sequence, translator::Kind, type_constraints::TypeConstraints}, variable::{VariableType, VariableValue}, word};
 
-use super::{translator::Translator, Sequence, Word};
+use super::{translator::Translator, Word};
 
 impl Translator {
     pub fn parse_structure(&mut self, signature_node: &Node, definition_node: &Node) {
@@ -68,7 +68,7 @@ impl Translator {
             }
         }
         assert!(structure_param_id.is_some());   // TODO: friendlify
-        OperationRepr::new(op_signature, op_params, iterators, structure_param_id)
+        OperationRepr::new(Sequence::from(op_signature), op_params, iterators, structure_param_id)
     }
 
     fn method_member_assert(&self, members: &Vec<String>, operation: &OperationRepr, structure_params: &Vec<String>) -> bool {
@@ -80,7 +80,7 @@ impl Translator {
         true
     }
 
-    fn handle_structure(&mut self, definition_node: &Node, operands: &Vec<String>, signature: &Vec<Word>) {
+    fn handle_structure(&mut self, definition_node: &Node, operands: &Vec<String>, signature: &Sequence) {
         self.globals.push_layer();
         self.push_signature_params_to_scope(operands);
         let mut method_aut = Automaton::new();
@@ -153,16 +153,15 @@ impl Translator {
                     "var_definition" => {
                         let name = self.get_var_definition_name(&method_stmt);
                         let (seq,params) = self.get_sequence_with_params(&method_stmt.child_by_field_name("rhs").unwrap());
-                        let sv = self.action_decision_automaton.run(&seq).expect("error: unknown sequence");
+                        let sv = self.action_decision_automaton.run(seq.get()).expect("error: unknown sequence");
                         op_members.push((name.to_string(),sv.clone(),params));
                     }
                     "sequence" => {
                         let mut event = self.get_event(&method_stmt);
-                        if let Some(op) = self.operations.get(&event.get_id()) {
-                            if let Some(struct_id) = op.method_of() {
-                                if *struct_id == structure_id {
-                                    event.deactivate_struct();
-                                }
+                        let op = &self.operations[event.get_id()];
+                        if let Some(struct_id) = op.method_of() {
+                            if *struct_id == structure_id {
+                                event.deactivate_struct();
                             }
                         }
                         events.push(event);
@@ -175,18 +174,18 @@ impl Translator {
         }
     }
 
-    fn rewrite_method_signature(&mut self, structure_id: usize, method_signature: Vec<Word>, operation: &OperationRepr) -> (Sequence,Option<usize>) {
-        let mut new_signature = vec![];
+    fn rewrite_method_signature(&mut self, structure_id: usize, method_signature: Sequence, operation: &OperationRepr) -> (Sequence,Option<usize>) {
+        let mut new_signature = Sequence::new();
         let mut str_id = None;
         let mut pushed_vars = 0;
-        for w in method_signature {
+        for w in method_signature.into_vec() {
             let Word::Type(t) = w.clone() else { 
                 new_signature.push(w);
                 continue; 
             };
             let param_name = operation.params[pushed_vars].clone();
             if param_name == "$self" {
-                let str_t = VariableType::Component(structure_id);
+                let str_t = VariableType::Structure(structure_id);
                 self.globals.add_variable(param_name, str_t.default());
                 new_signature.push(Word::Type(str_t));
                 str_id = Some(pushed_vars);
@@ -215,13 +214,13 @@ impl Translator {
         let mut new_structure_ints = HashSet::new();
         for mut struct_int in structure_interpretations {
             assert_eq!(struct_int.get_types().len()+2, var_id);
-            if rhs.len() == 1 && let Some(t) = rhs[0].get_variable_type() {
-                let ret = struct_int.intersect_var(&t, var_id);
+            if rhs.len() == 1 && let Some(t) = rhs.at(0).get_variable_type() {
+                let ret = struct_int.intersect_var(var_id, &t);
                 assert!(ret);
                 new_structure_ints.insert(struct_int);
                 continue;
             }
-            for var_int in self.action_decision_automaton.get_interpretations(rhs, Some(var_id)) {
+            for var_int in self.action_decision_automaton.get_interpretations(rhs.get(), Some(var_id), &self.operations) {
                 assert_eq!(var_int.get_types().len()+1, var_id);
                 if let Some(new_int) = struct_int.clone().intersect(var_int) {
                     new_structure_ints.insert(new_int);
@@ -232,10 +231,10 @@ impl Translator {
     }
 
     /// insert new structure
-    fn create_typed_structure(&mut self, signature: &Vec<Word>, operands: &Vec<String>, types: Vec<VariableType>, node: &Node, id: usize) {
+    fn create_typed_structure(&mut self, signature: &Sequence, operands: &Vec<String>, types: Vec<VariableType>, node: &Node, id: usize) {
         // swap signature
         let mut new_signature = vec![];
-        for w in signature {
+        for w in signature.get() {
             if let Word::Type(VariableType::Any(var_id)) = w {
                 let v = &types[*var_id];
                 new_signature.push(Word::Type(v.clone()));
@@ -251,13 +250,13 @@ impl Translator {
             }
             let name = self.get_var_definition_name(&stmt).to_string();
             let (seq,params) = self.get_sequence_with_params(&stmt.child_by_field_name("rhs").unwrap());
-            let sv = self.action_decision_automaton.run(&seq).expect("error: unknown sequence");
+            let sv = self.action_decision_automaton.run(seq.get()).expect("error: unknown sequence");
             match sv {
                 SequenceValue::Operation(_) => {
                     todo!("operation returns");
                 }
-                SequenceValue::Component(id) => {
-                    self.globals.update_variable(&name, VariableType::Component(id).default());
+                SequenceValue::Structure(id) => {
+                    self.globals.update_variable(&name, VariableType::Structure(id).default());
                 }
                 SequenceValue::Value(ref t) => {
                     self.globals.update_variable(&name, t.default());
@@ -265,16 +264,16 @@ impl Translator {
             }
             members.push((name,sv,params));
         }
-        // println!("adding structure {id} with signature \"{}\"", seq_to_str(&new_signature));
-        let la = LinearAutomaton::new(new_signature, SequenceValue::Component(id));
-        if !self.action_decision_automaton.union(la) {
+        // println!("adding structure {id} with signature \"{}\"", Sequence::from(new_signature.clone()));
+        if !self.action_decision_automaton.union(Sequence::from(new_signature), SequenceValue::Structure(id)) {
+            // println!("nope");
             return;
         }
         let structure = StructureTemplate::new(id, operands.clone(), types, members);
         self.structures.push(structure);
     }
 
-    fn infer_method_types_rec(&mut self, interpretation: &TypeConstraints, rest: &[Vec<TypeConstraints>], method_signature: &Vec<Word>, method_params: &Vec<String>, iterators: &Vec<usize>, aut: &mut Automaton, method_family: usize) -> Vec<TypeConstraints> {
+    fn infer_method_types_rec(&mut self, interpretation: &TypeConstraints, rest: &[Vec<TypeConstraints>], method_signature: &Sequence, method_params: &Vec<String>, iterators: &Vec<usize>, aut: &mut Automaton, method_family: usize) -> Vec<TypeConstraints> {
         if rest.is_empty() { 
             let type_cutoff = interpretation.get_types().len() - method_params.len();
             self.note_method(method_signature, interpretation.get_types().clone(), iterators, aut, method_family);
@@ -289,14 +288,14 @@ impl Translator {
         types
     }
 
-    fn is_builtin_structure(&self, id: usize) -> bool {
-        id <= self._number_of_builtin_structures
-    }
+    // fn is_builtin_structure(&self, id: usize) -> bool {
+    //     id <= self._number_of_builtin_structures
+    // }
 
     fn note_method(&self, signature: &Sequence, types: Vec<VariableType>, iterators: &Vec<usize>, aut: &mut Automaton, method_family: usize) {
         // swap signature
         let mut new_signature = vec![];
-        for w in signature {
+        for w in signature.get() {
             if let Word::Type(VariableType::Any(var_id)) = w {
                 let v = if types.len() > *var_id { &types[*var_id] } else { &VariableType::Any(*var_id) };
                 if iterators.contains(var_id) {
@@ -309,7 +308,6 @@ impl Translator {
             }
         }
         let op_id = method_family;
-        let la = LinearAutomaton::new(new_signature, SequenceValue::Operation(op_id));
-        aut.union(la);
+        aut.union(Sequence::from(new_signature), SequenceValue::Operation(op_id));
     }
 }

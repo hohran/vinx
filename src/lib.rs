@@ -26,15 +26,8 @@ fn get_action_activeness(actions: &Vec<action::Action>) -> HashMap<String,bool> 
 
 pub fn run(media_file: String, command_file: String, output_path: String) {
     let (mut globals, mut actions, operations) = parse(&command_file);
-    // println!("--- actions ---");
-    // for op in actions.iter() {
-    //     println!("{}", op);
-    // }
-    // return;
     let mut action_activeness = get_action_activeness(&actions);
-    // return;
-    let mut video = Video::from_file(media_file, "ffmpeg").expect("could not read video file");
-    preprocess(&mut video);
+    let video = Video::from_file(media_file, "ffmpeg").expect("could not read video file");
     let mut context = Context::from(video);
     // run the main loop
     for _ in 1..context.get_video_length()+1 {
@@ -50,7 +43,4 @@ pub fn run(media_file: String, command_file: String, output_path: String) {
     let video = context.get_video();
     video.save(output_path.to_string(), 24, false, "ffmpeg");
     eprintln!("Output saved as {output_path}");
-}
-
-pub fn preprocess(_video: &mut Video) {
 }

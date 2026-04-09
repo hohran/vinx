@@ -3,9 +3,9 @@ use std::process::exit;
 use colorized::Color;
 use tree_sitter::Node;
 
-use crate::{action::Action, event::Operations, translator::{Sequence, StructureTemplate, file_manager::FileManager, get_children}, variable::{Variable, stack::{Stack, VariableMap}, types::VariableType, values::{Structure, VariableValue}}};
+use crate::{action::Action, event::Operations, translator::{StructureTemplate, builtins::load_builtin_structures, file_manager::FileManager, get_children, sequence::Sequence}, variable::{Variable, Stack, VariableValue}};
 
-use super::{automata::automaton::Automaton, builtins::load_builtin_operations, Word};
+use super::{automata::Automaton, builtins::load_builtin_operations, Word};
 
 pub trait Kind {
     fn expect_kind(&self, expect: &str, translator: &Translator);
@@ -36,7 +36,6 @@ pub struct Translator {
     pub action_decision_automaton: Automaton,
     pub operations: Operations,
     pub structures: Vec<StructureTemplate>,
-    pub _number_of_builtin_operations: usize,
     pub _number_of_builtin_structures: usize,
     pub file_manager: FileManager,
     pub _unresolved_parameter_types: usize,
@@ -129,7 +128,7 @@ impl Translator {
         }
     }
 
-    pub fn get_sequence(&self, node: &Node) -> Vec<Word> {
+    pub fn get_sequence(&self, node: &Node) -> Sequence {
         node.expect_kind("sequence", self);
         let mut seq = vec![];
         for n in get_children(node) {
@@ -144,12 +143,12 @@ impl Translator {
                 x => panic!("unexpected type in sequence: {x}")
             }
         }
-        seq
+        Sequence::from(seq)
     }
 
     pub fn get_sequence_with_params(&self, node: &Node) -> (Sequence,Vec<Variable>) {
         node.expect_kind("sequence", self);
-        let mut seq = vec![];
+        let mut seq = Sequence::new();
         let mut params = vec![];
         for n in get_children(node) {
             match n.kind() {
@@ -200,16 +199,16 @@ pub fn parse(filepath: &str) -> (Stack,Vec<Action>,Operations) {
     let mut parser = tree_sitter::Parser::new();
     parser.set_language(&tree_sitter_vinx::LANGUAGE.into()).expect("error: could not load vinx grammar");
     let mut aut = Automaton::new();
-    let op_count = load_builtin_operations(&mut aut);
+    let operations = load_builtin_operations(&mut aut);
+    let (struct_count,builtin_structures) = load_builtin_structures(&mut aut);
     let mut it = Translator {
         parser,
         globals: Stack::new(),
         actions: vec![],
         action_decision_automaton: aut,
-        operations: Operations::new(),
-        structures: Vec::new(),
-        _number_of_builtin_operations: op_count,
-        _number_of_builtin_structures: 0,
+        operations: operations,
+        structures: builtin_structures,
+        _number_of_builtin_structures: struct_count,
         file_manager: FileManager::new(),
         _unresolved_parameter_types: 0,
         // in_component: false,

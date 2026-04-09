@@ -1,80 +1,12 @@
 use std::fmt::Display;
 
-// use rsframe::vfx::video::Pixel;
 use image::Rgb;
 
-use crate::variable::stack::{Stack, VariableMap};
+use crate::{variable::stack::{Stack, VariableMap}, video::Frame};
 
 use super::{types::VariableType, Variable};
 
 pub type Color = Rgb<u8>;
-
-#[derive(Debug,Clone,Copy,PartialEq)]
-pub struct Coordinate {
-    x_rel: f32,
-    x_static: i32,
-    y_rel: f32,
-    y_static: i32,
-}
-
-impl Display for Coordinate {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let x_str = if self.x_rel != 0f32 {
-            if self.x_static != 0 {
-                format!("{:.2} + {}", self.x_rel, self.x_static)
-            } else {
-                format!("{:.2}", self.x_rel)
-            }
-        } else {
-            format!("{}", self.x_static)
-        };
-        let y_str = if self.y_rel != 0f32 {
-            if self.y_static != 0 {
-                format!("{:.2} + {}", self.y_rel, self.y_static)
-            } else {
-                format!("{:.2}", self.y_rel)
-            }
-        } else {
-            format!("{}", self.y_static)
-        };
-        write!(f, "({},{})", x_str, y_str)
-    }
-}
-
-impl Coordinate {
-    pub fn new(x_rel: f32, x_static: i32, y_rel: f32, y_static: i32) -> Self {
-        Self { x_rel, x_static, y_rel, y_static }
-    }
-
-    pub fn move_by(&mut self, other: &Self) {
-        self.x_rel += other.x_rel;
-        self.x_static += other.x_static;
-        self.y_rel += other.y_rel;
-        self.y_static += other.y_static;
-    }
-
-    pub fn transposed(&self) -> Self {
-        Self { x_rel: self.y_rel, x_static: self.y_static, y_rel: self.x_rel, y_static: self.x_static }
-    }
-
-    pub fn get_x(&self, width: usize) -> i32 {
-        let x_f = width as f32 * self.x_rel;
-        if x_f > i32::MAX as f32 {
-            return i32::MAX
-        }
-        let x: i32 = x_f as i32;
-        x.saturating_add(self.x_static)
-    }
-
-    pub fn get_y(&self, height: usize) -> i32 {
-        let y_f = height as f32 * self.y_rel;
-        if y_f > i32::MAX as f32 {
-            return i32::MAX
-        }
-        let y: i32 = y_f as i32;
-        y.saturating_add(self.y_static)
-    }
-}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Structure {
@@ -91,11 +23,8 @@ impl Structure {
         Self { id, members: VariableMap::new() }
     }
 
-    pub fn populate_stack(&self, stack: &mut Stack) {
-        for (n,v) in &self.members {
-            stack.add_variable(n.clone(), v.clone());
-        }
-        // stack.push_layer_with(self.members.clone()); alternative ?
+    pub fn copy_members(&self) -> VariableMap {
+        self.members.clone()
     }
 
     pub fn update(&mut self, stack: &mut Stack) {
@@ -104,6 +33,14 @@ impl Structure {
             let v = stack.get_variable(&n).unwrap().clone();
             self.members.insert(n, v);
         }
+    }
+
+    pub fn get_member(&self, name: &str) -> &VariableValue {
+        self.members.get(name).expect(&format!("error: could not find member {name} in structure {}", self.id))
+    }
+
+    pub fn get_member_mut(&mut self, name: &str) -> &mut VariableValue {
+        self.members.get_mut(name).expect(&format!("error: could not find member {name} in structure {}", self.id))
     }
 }
 
@@ -120,6 +57,7 @@ pub enum VariableValue {
     Direction(Direction),
     /// Type for user defined structures
     Structure(Structure),
+    Image(Frame),
     SelfReference,
     Vec(Vec<Variable>),
 }
@@ -132,13 +70,13 @@ pub enum Direction {
     Down,
 }
 
-impl ToString for Direction {
-    fn to_string(&self) -> String {
+impl Display for Direction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Direction::Left => { "left".to_string() }
-            Direction::Right => { "right".to_string() }
-            Direction::Up => { "up".to_string() }
-            Direction::Down => { "down".to_string() }
+            Direction::Left => write!(f, "left"),
+            Direction::Right => write!(f, "right"),
+            Direction::Up => write!(f, "up"),
+            Direction::Down => write!(f, "down"),
         }
     }
 }
@@ -150,12 +88,12 @@ pub enum Effect {
     Inverse,
 }
 
-impl ToString for Effect {
-    fn to_string(&self) -> String {
+impl Display for Effect {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Blur => { "blur".to_string() }
-            Self::Random => { "random".to_string() }
-            Self::Inverse => { "inverse".to_string() }
+            Self::Blur => write!(f, "blur"),
+            Self::Random => write!(f, "random"),
+            Self::Inverse => write!(f, "inverse"),
         }
     }
 }
@@ -169,6 +107,10 @@ impl VariableValue {
         VariableValue::Any(0)
     }
 
+    pub fn is_assignable_to(&self, other: &Self) -> bool {
+        self.get_type().is_assignable_to(&other.get_type())
+    }
+
     pub fn to_string(&self) -> String {
         match self {
             Self::Int(i) => { format!("{i}") }
@@ -179,6 +121,11 @@ impl VariableValue {
             Self::Color(p) => { format!("{{{},{},{}}}",p.0[0],p.0[1],p.0[2]) }
             Self::Effect(e) => { e.to_string() }
             Self::Direction(d) => { d.to_string() }
+            Self::Image(i) => { 
+                let w = i.width();
+                let h = i.height();
+                format!("image {w}x{h}")
+            }
             Self::Structure(s) => { 
                 let mut map_str = String::new();
                 for (n,v) in &s.members {
@@ -199,18 +146,19 @@ impl VariableValue {
             Self::String(_) => VariableType::String,
             Self::Effect(_) => VariableType::Effect,
             Self::Direction(_) => VariableType::Direction,
-            Self::Structure(s) => VariableType::Component(s.id),
+            Self::Image(_) => VariableType::Image,
+            Self::Structure(s) => VariableType::Structure(s.id),
             Self::SelfReference => VariableType::SelfReference,
             Self::Vec(v) => {
                 if v.len() == 0 {
                     panic!("cannot determine type of empty vector");
                 }
                 let t = v[0].get_type();
-                for vv in v.iter().skip(1) {
-                    if vv.get_type() != t {
-                        panic!("vector contains mixed types");
-                    }
-                }
+                // for item in v.iter().skip(1) {
+                //     if item.get_type() != t {
+                //         panic!("vector contains mixed types");
+                //     }
+                // }
                 VariableType::Vec(Box::new(t.clone()))
             }
             Self::Any(i) => VariableType::Any(*i),
@@ -270,5 +218,12 @@ impl VariableValue {
             panic!();
         };
         *e
+    }
+
+    pub fn into_image(&self) -> &Frame {
+        let Self::Image(i) = self else {
+            panic!();
+        };
+        i
     }
 }

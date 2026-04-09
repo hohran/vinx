@@ -3,7 +3,7 @@ use std::process::exit;
 use colorized::Color;
 use tree_sitter::Node;
 
-use crate::{action::{Action, Timestamp}, event::Event, translator::{SequenceValue, Word, get_all_children, get_children, seq_to_str, translator::{Kind, Translator}}, variable::{Variable, stack::VariableMap}};
+use crate::{action::{Action, Timestamp}, context::Context, event::Event, translator::{SequenceValue, Word, get_all_children, get_children, sequence::Sequence, translator::{Kind, Translator}}, variable::{Variable}};
 
 impl Translator {
     pub fn get_action_definition(&mut self, node: &Node) {
@@ -49,7 +49,7 @@ impl Translator {
     fn sequence_to_event(&mut self, node: &Node) -> Event {
         assert!(node.kind() == "sequence", "unexpected type of node {}", node.kind());
         let mut params = vec![];
-        let mut seq = vec![];
+        let mut seq = Sequence::new();
         for n in get_children(node) {
             match n.kind() {
                 "keyword" => {
@@ -67,18 +67,14 @@ impl Translator {
                 x => panic!("unexpected type in sequence: {x}")
             }
         }
-        let Some(sv) = self.action_decision_automaton.run(&seq) else {
-            eprintln!("{} invalid sequence: {}", "error:".color(colorized::Colors::RedFg), seq_to_str(&seq));
+        let Some(sv) = self.action_decision_automaton.run(seq.get()) else {
+            eprintln!("{} invalid sequence: {seq}", "error:".color(colorized::Colors::RedFg));
             eprintln!("{}:", self.file_manager.current_file().expect("error: could not retrieve file"));
             eprintln!(" line {}: {}", node.start_position().row+1, self.text(node));
             exit(1);
         };
         if let SequenceValue::Operation(id) = sv {
-                if self.is_builtin_operation(id) {
-                    Event::new(id, params, vec![], VariableMap::new())
-                } else {
-                    self.operations.get(&id).expect(&format!("error: unknown operation {id}")).instantiate(params, &self.structures, &mut self.globals)
-                }
+            self.operations[id].instantiate(params, &mut Context::empty(), &self.operations, &self.structures, &mut self.globals)
         } else {
             panic!("unexpected sequence value: {:?}", sv);
         }

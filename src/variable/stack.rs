@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 
-use crate::variable::{VariableLocation, types::VariableType};
+use crate::variable::types::VariableType;
 
 use super::values::VariableValue;
 
 pub type VariableMap = HashMap<String,VariableValue>;
+
 #[derive(Debug,Clone)]
 pub struct Stack {
     pub layers: Vec<VariableMap>
@@ -68,18 +69,11 @@ impl Stack {
             panic!("error: tried to index {name} of type {} (expected vector type)", val.get_type().to_string());
         };
         let vec_at = &mut v[index];
-        let name_at = vec_at.get_name();
-        let val_at = match vec_at.location {
-            VariableLocation::Scope => {
-                self.get_variable_mut(&name_at).expect("error: nonexistent member of vector")
-            }
-            VariableLocation::Static => {
-                vec_at.val.as_mut().expect("error: static variable without value")
-            }
-            // _ => {
-
-            //     panic!("todo: only scoped and static values are supported in vector assignments");
-            // }
+        let name_at = vec_at.get_name().to_string();
+        let val_at = match vec_at {
+            super::Variable::Static(v) => v,
+            super::Variable::Named(_, _) => 
+                self.get_variable_mut(&name_at).expect("error: nonexistent member of vector"),
         };
         // println!(" at vec: {} -> {}", val_at.to_string(), new_value.to_string());
         *val_at = new_value;
@@ -99,7 +93,7 @@ impl Stack {
         for layer in self.layers.iter().rev() {
             let val = layer.get(name);
             if let Some(v) = val {
-                if v.get_type() == *var_type {
+                if v.get_type().is_assignable_to(var_type) {
                     return val;
                 }
             }
@@ -121,7 +115,7 @@ impl Stack {
         for layer in self.layers.iter_mut().rev() {
             let val = layer.get_mut(name);
             if let Some(ref v) = val {
-                if v.get_type() == *var_type {
+                if v.get_type().is_assignable_to(var_type) {
                     return val;
                 }
             }

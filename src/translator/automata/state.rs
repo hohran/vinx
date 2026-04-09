@@ -1,15 +1,14 @@
-use crate::{ translator::{Word, type_constraints::TypeConstraints}, variable::types::VariableType};
+use crate::translator::{Word, automata::transition::{Applicability, Transition}, type_constraints::TypeConstraints};
 
 pub type StateId = usize;
 
 /// State of a finite machine.
 /// Each state is represented all possible transitions from it, and expects to be identified with a number.
 ///
-/// Every transition is semi-deterministic, with the only non-deterministic one being for ambigous type Any.
 /// Getting the next state is possible with `get_transition` which looks up the most fitting
-/// transition, or if you want to force a certain transition, use `get_exact_transition`.
+/// transition, or if you want to force a certain transition, use `use_transition`.
 pub struct State {
-    transitions: Vec<(Word,StateId)>,
+    transitions: Vec<(Transition,StateId)>,
 }
 
 impl State {
@@ -18,193 +17,83 @@ impl State {
         Self { transitions: vec![] }
     }
 
-    /// Check if state has certain transition. The transition must match perfectly, even with
-    /// bindings of ambiguous types.
-    pub fn has_transition(&self, t: &Word) -> bool {
-        self.transitions.iter().any(|(wt,_)| wt.strictly_matches(t))
+    /// Check if state has transition specified by `word`.
+    pub fn has_transition(&self, word: &Word) -> bool {
+        self.transitions.iter().any(|(t,_)| t.is(word))
     }
     
     /// Add a new transition to state `n`, using `t`.
     /// Prerequisity is that this transition does not exist.
-    pub fn add_transition(&mut self, t: Word, n: StateId) {
+    pub fn add_transition(&mut self, t: Word, s: StateId) {
         assert!(!self.has_transition(&t), "error: transition already exists");
-        self.transitions.push((t,n));
+        self.transitions.push((t.into(),s));
     }
 
-    /// Get the applicability of `s` on a transition over `t`.
-    /// The higher the applicability, the more applicable this symbol is for the given transition.
-    /// If `None` is returned, the symbol is not applicable.
-    fn transition_applicability(t: &Word, s: &Word, bind_mapping: &TypeConstraints) -> Option<StateId> {
-        return Self::transition_applicability_rec(t, s, bind_mapping, true);
+    /// Get state for transition defined by `word`, if such transition exists.
+    pub fn use_transition(&self, word: &Word) -> Option<StateId> {
+        self.transitions.iter()
+            .find(|(t,_)| t.is(word))
+            .map(|(_,s)| *s)
     }
 
-    fn transition_applicability_rec(t: &Word, s: &Word, bind_mapping: &TypeConstraints, unwind_any: bool) -> Option<StateId> {
-        if t == s {
-            return Some(usize::MAX);    // if s is Any, it will only map to any
-        }
-        match (t.clone(),s.clone()) {
-            (Word::Type(x),Word::Type(y)) => {
-                if let VariableType::Any(any_binding) = x {
-                    if unwind_any == false {
-                        return Some(0);
-                    }
-                    let bind_value = bind_mapping.at(any_binding);
-                    if bind_value == VariableType::Any(any_binding) {   // unset binding
-                        return Some(0);
-                    }
-                    if let Some(app) = Self::transition_applicability_rec(&Word::Type(bind_value), s, bind_mapping, false) {
-                        return Some(app.saturating_sub(1));
-                    } else {
-                        return None;
-                    }
-                }
-                match (&x,&y) {
-                    (VariableType::Vec(xn),VariableType::Vec(yn)) => {
-                        // TODO: think about this
-                        if let Some(app) = Self::transition_applicability_rec(&Word::Type(*xn.clone()), &Word::Type(*yn.clone()), bind_mapping, unwind_any) {
-                            if app < 10_000 {
-                                return Some(app+2)
-                            } else {
-                                return Some(app)
-                            }
-                        }
-                    }
-                    _ => {return None;}
-                }
-                None
-            },
-            _ => None,
-        }
-    }
-    /// Get state for transition `t`, if such transition exists.
-    pub fn get_exact_transition(&self, t: &Word) -> Option<StateId> {
-        for (wt,n) in &self.transitions {
-            if wt.strictly_matches(t) {
-                return Some(*n);
-            }
-        }
-        None
-    }
-
-    // pub fn enforce_transition_with(&self, transition: &Word, s: &Word, bind_mapping: &mut HashMap<usize,VariableType>) -> Option<StateId> {
-    //     let (w,n) = self.transitions.iter().find(|(w,_)| w == transition)?;
-    //     match (transition,s) {
-    //         (Word::Keyword(t),Word::Keyword(s)) => {
-    //             if t == s {
-    //                 Some(*n)
-    //             } else {
-    //                 None
-    //             }
-    //         }
-    //         (Word::Type(t),Word::Type(s)) => {
-    //             if t.get_depth() > s.get_depth() && !s.is_ambiguous() {
-    //                 // e.g. [Pos] <- Int
-    //                 return None;
-    //             }
-    //             if let Some(binding) = t.get_binding() {    // ambiguous transition
-    //                 match bind_mapping.get(&binding) {
-    //                     // TODO TODO TODO
-    //                     Some(bind_type) => {
-    //                     }
-    //                     None => {
-    //                     }
-    //                 }
-    //             } else {
-    //                 if t == s {
-    //                     Some(*n)
-    //                 } else {
-    //                     None
-    //                 }
-    //             }
-    //         }
-    //         _ => None
-    //     }
-    // }
-
-    // /// Get state for transition `s`, if such transition exists, with using binding mapping.
-    // pub fn get_exact_mapped_transition(&self, s: &Word, bind_mapping: &mut HashMap<usize,VariableType>) -> Option<StateId> {
-    //     let Word::Type(t) = s else {
-    //         return self.get_exact_transition(s);
-    //     };
-    //     for (w,n) in &self.transitions {
-    //         let Word::Type(wt) = w else { continue };
-    //         if t == wt {
-    //             // check binding
-    //             let Some(binding) = wt.get_binding() else {
-    //                 return Some(*n);
-    //             };
-    //             match bind_mapping.get(&binding) {
-    //                 Some(bt) => {
-    //
-    //                 }
-    //                 None => {
-    //                     // create this mapping
-    //                     bind_mapping.insert(binding, wt.clone());
-    //                     return Some(*n);
-    //                 }
-    //             }
-    //         }
-    //     }
-    //     None
-    // }
-
-    /// Get the most fitting next state for symbol `t`.
-    pub fn get_transition(&self, t: &Word, bind_mapping: &mut TypeConstraints) -> Option<StateId> {
-        if let Word::Type(_) = t {
-            self.get_transition_for_type(t, bind_mapping)
+    /// Get the most fitting next state for word `word`, given binding for Any.
+    pub fn apply(&self, word: &Word, binding: &mut TypeConstraints) -> Option<StateId> {
+        if word.is_type() {
+            self.get_transition_for_type(word, binding)
         } else {
-            self.get_exact_transition(t)
+            self.use_transition(word)
         }
     }
-    /// Get the most fitting next state for symbol `t`, which represents a variable type
-    fn get_transition_for_type(&self, t: &Word, bind_mapping: &mut TypeConstraints) -> Option<StateId> {
-        assert!(t.is_type());
-        let mut best: Option<(StateId,usize,&Word)> = None;
+
+    /// Get the most fitting next state for a word, which represents variable type
+    fn get_transition_for_type(&self, word: &Word, bind_mapping: &mut TypeConstraints) -> Option<StateId> {
+        assert!(word.is_type());
+        let mut best: Option<(StateId,Applicability,&Transition)> = None;
         // get most fitting (best) transition
-        for (wt,n) in &self.transitions {
-            if let Some(app) = State::transition_applicability(wt,t, bind_mapping) {
-                if let Some((_,b,_)) = best {
-                    if app > b {
-                        best = Some((*n,app,wt));
-                    }
-                } else {
-                    best = Some((*n,app,wt));
+        for (t,s) in &self.transitions {
+            let Some(app) = t.get_applicability(word, &bind_mapping) else {
+                continue;
+            };
+            if let Some((_,b,_)) = best {
+                if app > b {
+                    best = Some((*s,app,t));
                 }
+            } else {
+                best = Some((*s,app,t));
             }
         }
         // possibly update binding mapping
-        if let Some((n,_,wt)) = best {
-            let Some(wt) = wt.get_variable_type() else { panic!() };
+        if let Some((s,_,t)) = best {
+            let wt = t.get_type();
             if wt.is_ambiguous() {
                 let binding = wt.get_binding().unwrap();
                 // update binding
                 let depth = wt.get_depth();
-                let new_binding_value = t.get_variable_type().unwrap().unwrap_depth(depth);
-                bind_mapping.intersect_var(&new_binding_value, binding);
+                let new_binding_value = word.get_type().unwrap().unwrap_depth(depth);
+                bind_mapping.intersect_var(binding, new_binding_value);
             }
-            return Some(n);
+            return Some(s);
         }
         None
     }
 
     /// Get all transitions possible from this state.
     #[allow(dead_code)]
-    pub fn get_all_transitions(&self) -> &Vec<(Word,StateId)>{
+    pub fn get_all_transitions(&self) -> &Vec<(Transition,StateId)>{
         &self.transitions
     }
 
-    /// Get all transitions from this state, using the symbol `s`.
-    /// Returned transitions are ordered from the most fitting to the least fitting.
-    pub fn get_possible_transitions(&self, s: &Word, bind_mapping: &TypeConstraints) -> Vec<&Word> {
+
+    /// Get all transitions from this state, using the word `word`.
+    /// Returned transitions are ordered by their applicability.
+    pub fn get_ordered_transitions(&self, s: &Word, bind_mapping: &TypeConstraints) -> Vec<&Transition> {
         let mut v = vec![];
         let mut apps = vec![];
         for (t,_) in &self.transitions {
-            if let Some(a) = State::transition_applicability(t, s, bind_mapping) {
+            if let Some(a) = t.get_applicability(s, bind_mapping) {
                 let mut i = 0;
-                for _ in 0..apps.len() {
-                    if a > apps[i] {
-                        break;
-                    }
+                for a2 in &apps {
+                    if a > *a2 { break; }
                     i += 1;
                 }
                 apps.insert(i, a);
@@ -215,32 +104,34 @@ impl State {
     }
 
     /// Get all transitions over symbols representing variable types.
-    pub fn get_type_transitions(&self) -> Vec<&Word> {
-        self.transitions.iter().filter(|(t,_)| if let Word::Type(_) = t { true } else { false }).map(|(t,_)| t).collect()
+    pub fn get_type_transitions(&self) -> Vec<&Transition> {
+        self.transitions.iter()
+            .filter(|(t,_)| t.is_type())
+            .map(|(t,_)| t)
+            .collect()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{vtype, word};
+    use crate::variable::VariableType;
 
     use super::*;
 
     #[test]
-    fn test_possible_transition_ordering() {
+    fn test_get_ordered_transitions() {
         let mut s = State::new();
         s.add_transition(word!(Int), 1);
         s.add_transition(word!(Any(1)), 2);
-        // s.add_transition(word!(Any(2)), 3);
         s.add_transition(word!(Pos), 4);
         let mut bind_mapping = TypeConstraints::_new();
-        bind_mapping.intersect_var(&vtype!(Int), 1);
-        let pos_trans = s.get_possible_transitions(&word!(Int), &bind_mapping);
-        assert_eq!(pos_trans, [&word!(Int),&word!(Any(1))]);
+        bind_mapping.intersect_var(1, &vtype!(Int));
+        let pos_trans = s.get_ordered_transitions(&word!(Int), &bind_mapping);
+        assert_eq!(pos_trans, [&Transition::from(word!(Int)),&Transition::from(word!(Any(1)))]);
         bind_mapping = TypeConstraints::_new();
-        bind_mapping.intersect_var(&vtype!(Pos), 1);
-        let pos_trans = s.get_possible_transitions(&word!(Int), &bind_mapping);
-        assert_eq!(pos_trans, [&word!(Int)]);
+        bind_mapping.intersect_var(1, &vtype!(Pos));
+        let pos_trans = s.get_ordered_transitions(&word!(Int), &bind_mapping);
+        assert_eq!(pos_trans, [&Transition::from(word!(Int))]);
     }
 }
-

@@ -4,9 +4,12 @@ extern crate tree_sitter_vinx;
 mod automata;
 mod type_constraints;
 mod translator;
+use std::collections::HashMap;
+
 pub use translator::parse;
 use tree_sitter::Node;
 mod builtins;
+pub mod sequence;
 // mod component_class;
 mod operations;
 mod structures;
@@ -14,18 +17,16 @@ mod value;
 mod actions;
 mod file_manager;
 
-use crate::variable::{Variable, stack::{Stack, VariableMap}, types::VariableType, values::{Structure, VariableValue}};
+use crate::{context::Context, event::Operations, variable::{Stack, Structure, Variable, VariableMap, VariableType, VariableValue}};
 // use crate::vtype;
 
 #[derive(Debug)]
 pub struct StructureTemplate {
     id: usize,
+    // name: Option<String>,
     param_names: Vec<String>,
     param_types: Vec<VariableType>,
     members: Vec<(String, SequenceValue, Vec<Variable>)>,
-    // member_names: Vec<String>,
-    // member_types: Vec<VariableType>,
-    // - do it when sequences are allowed as assignments
 }
 
 impl StructureTemplate {
@@ -33,28 +34,31 @@ impl StructureTemplate {
         Self { id, param_names, param_types, members }
     }
 
-    pub fn instantiate(&self, params: Vec<Variable>, structures: &Vec<StructureTemplate>, stack: &mut Stack) -> Structure {
+    pub fn instantiate(&self, params: Vec<Variable>, context: &mut Context, operations: &Operations, structures: &Vec<StructureTemplate>, stack: &mut Stack) -> Structure {
         assert_eq!(params.len(), self.param_names.len());
         // println!("instantiating structure {} with {params:?}", self.id);
         stack.push_layer();
         let mut members = VariableMap::new();
         for i in 0..params.len() {
-            assert!(params[i].get_type() == &self.param_types[i]);
-            members.insert(self.param_names[i].clone(), params[i].get_value(stack));
-            stack.add_variable(self.param_names[i].clone(), params[i].get_value(stack));
+            assert!(params[i].get_type() == self.param_types[i]);
+            members.insert(self.param_names[i].clone(), params[i].get_value(stack).clone());
+            stack.add_variable(self.param_names[i].clone(), params[i].get_value(stack).clone());
         }
         for (name,val,ps) in &self.members {
             let member_val = match val {
-                SequenceValue::Operation(_) => {
-                    todo!("operation return values");
+                SequenceValue::Operation(id) => {
+                    operations[*id]
+                        .instantiate(ps.clone(), context, operations, structures, stack)
+                        .process(context, stack, &mut HashMap::new(), operations) // TODO: fix hashmap for action activeness
+                        .expect("error: did not have value")
                 }
-                SequenceValue::Component(id) => {
-                    let val = structures[*id].instantiate(ps.clone(), structures, stack);
+                SequenceValue::Structure(id) => {
+                    let val = structures[*id].instantiate(ps.clone(), context, operations, structures, stack);
                     VariableValue::Structure(val)
                 }
                 SequenceValue::Value(_) => {
                     assert_eq!(ps.len(), 1, "only 1 param for value");
-                    ps[0].get_value(stack)
+                    ps[0].get_value(stack).clone()
                 }
             };
             members.insert(name.clone(), member_val.clone());
@@ -115,6 +119,13 @@ impl Word {
             _ => None,
         }
     }
+
+    pub fn get_type(&self) -> Option<&VariableType> {
+        match &self {
+            Word::Type(vt) => Some(vt),
+            _ => None
+        }
+    }
 }
 
 impl ToString for Word {
@@ -126,17 +137,6 @@ impl ToString for Word {
     }
 }
 
-pub type Sequence = Vec<Word>;
-pub fn seq_to_str(seq: &Sequence) -> String {
-    let mut ret = "".to_string();
-    for w in seq {
-        ret.push_str(&w.to_string());
-        ret.push(' ');
-    }
-    ret.pop();
-    ret
-}
-
 #[macro_export]
 macro_rules! word {
     ( [ $($x:tt)+ ] ) => { Word::Type(VariableType::Vec(Box::new(vtype!($($x)+)))) };
@@ -145,8 +145,10 @@ macro_rules! word {
     ( Color ) => { Word::Type(VariableType::Color) };
     ( Direction ) => { Word::Type(VariableType::Direction) };
     ( Effect ) => { Word::Type(VariableType::Effect) };
-    ( Component($i:expr) ) => { Word::Type(VariableType::Component($i)) };
+    ( Image ) => { Word::Type(VariableType::Image) };
+    ( Structure ( $i:expr ) ) => { Word::Type(VariableType::Structure($i)) };
     ( Any ( $i:expr ) ) => { Word::Type(VariableType::Any($i)) };
+    ( Rectangle ) => { Word::Type(VariableType::Structure(0)) };
     ( ( $($x:tt)+ ) ) => { word!($($x)+) };
     ( String ) => { Word::Type(VariableType::String) };
     ( $x:ident ) => { Word::Keyword(stringify!($x).to_string()) };
@@ -156,17 +158,30 @@ macro_rules! word {
 #[derive(Clone,Eq,PartialEq,Debug)]
 pub enum SequenceValue {
     Operation(usize),
-    Component(usize),
+    Structure(usize),
     Value(VariableType),
-    // Value(usize),  // TODO: this would be nicer to remove: operations will have a return value and it will
-            // be computed that way. potential problem is handling calling of operations in
-            // build time: could they draw?
+}
+
+impl SequenceValue {
+    pub fn into_variable_type(&self, operations: &Operations) -> VariableType {
+        match self {
+            SequenceValue::Operation(f_id) => {
+                let op = &operations[*f_id];
+                let Some(ret) = op.get_return_type() else {
+                    panic!("no return type for: {}", op.get_signature());
+                };
+                ret.clone()
+            }
+            SequenceValue::Structure(s) => VariableType::Structure(*s),
+            SequenceValue::Value(t) => t.clone()
+        }
+    }
 }
 
 #[macro_export]
 macro_rules! seq {
     ( $($x:tt)+ ) => {
-        ([$(word!($x)),+]).to_vec()
+        Sequence::from(([$(word!($x)),+]).to_vec())
     };
 }
 
@@ -193,10 +208,5 @@ mod tests {
         let w1 = word!(Effect);
         let w2 = word!(Effect);
         assert_eq!(w1,w2);
-    }
-
-    #[test]
-    fn test_seq_macro() {
-        assert_eq!(seq!(rotate [Int] into "as" (Any(1)) String), vec![word!(rotate),word!([Int]),word!(into),word!("as"),word!(Any(1)),word!(String)]);
     }
 }

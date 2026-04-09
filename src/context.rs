@@ -1,27 +1,41 @@
 use std::collections::HashMap;
 
 use crate::video::{Frame, Video};
-use crate::variable::values::VariableValue;
+use crate::variable::VariableValue;
 
 pub type Globals = HashMap<String,VariableValue>;
 
 pub struct Context {
-    video: Video,
+    video: Option<Video>,
     frame_idx: usize,
     register: Option<VariableValue>,
 }
 
 impl Context {
+    pub fn empty() -> Self {
+        Self { video: None, register: None, frame_idx: 0, }
+    }
+
     pub fn from(video: Video) -> Self {
-        Self { video, register: None, frame_idx: 0, }
+        Self { video: Some(video), register: None, frame_idx: 0, }
     }
 
     pub fn get_width(&self) -> usize {
-        self.video.width() as usize
+        let Some(video) = &self.video else {
+            panic!("error: empty context")
+        };
+        video.width() as usize
     }
 
     pub fn get_height(&self) -> usize {
-        self.video.height() as usize
+        let Some(video) = &self.video else {
+            panic!("error: empty context")
+        };
+        video.height() as usize
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.video.is_none()
     }
 
     pub fn step(&mut self) {
@@ -29,15 +43,24 @@ impl Context {
     }
 
     pub fn get_frame(&mut self) -> &mut Frame {
-        self.video.get_frame_mut(self.frame_idx-1)
+        let Some(video) = &mut self.video else {
+            panic!("error: empty context")
+        };
+        video.get_frame_mut(self.frame_idx-1)
     }
 
     pub fn get_video_length(&mut self) -> usize {
-        self.video.length()
+        let Some(video) = &self.video else {
+            panic!("error: empty context")
+        };
+        video.length()
     }
 
     pub fn get_video(&mut self) -> &mut Video {
-        &mut self.video
+        let Some(video) = &mut self.video else {
+            panic!("error: empty context")
+        };
+        video
     }
 
     pub fn set_register(&mut self, val: VariableValue) {

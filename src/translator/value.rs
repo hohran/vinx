@@ -1,7 +1,9 @@
+use std::collections::HashMap;
+
 use image::Rgb;
 use tree_sitter::Node;
 
-use crate::{translator::{SequenceValue, get_children, seq_to_str, translator::Kind}, variable::{Variable, values::{Direction, Effect, VariableValue}}};
+use crate::{context::Context, translator::{SequenceValue, get_children, sequence::Sequence, translator::Kind}, variable::{Direction, Effect, Variable, VariableValue}};
 
 use super::{translator::Translator, Word};
 
@@ -55,7 +57,7 @@ impl Translator {
         if children.len() == 1 {
             return self.get_atomic_value(&children[0]);
         }
-        let mut seq = vec![];
+        let mut seq = Sequence::new();
         let mut params = vec![];
         for n in children {
             match n.kind() {
@@ -70,13 +72,22 @@ impl Translator {
                 x => panic!("unexpected type in sequence: {x}")
             }
         }
-        let ret = self.action_decision_automaton.run(&seq);
+        let ret = self.action_decision_automaton.run(seq.get());
         let Some(sv) = ret else {
-            panic!("error: invalid sequence: {}", seq_to_str(&seq));
+            panic!("error: invalid sequence: {seq}");
         };
         match sv {
-            SequenceValue::Component(id) => {
-                VariableValue::Structure(self.structures[id].instantiate(params, &self.structures, &mut self.globals))
+            SequenceValue::Structure(id) => {
+                let mut context = Context::empty();
+                // FIXME
+                VariableValue::Structure(self.structures[id].instantiate(params, &mut context, &self.operations, &self.structures, &mut self.globals))
+            }
+            SequenceValue::Operation(id) => {
+                let mut context = Context::empty();
+                self.operations[id]
+                    .instantiate(params, &mut context, &self.operations, &self.structures, &mut self.globals)
+                    .process(&mut Context::empty(), &mut self.globals, &mut HashMap::new(), &self.operations)
+                    .expect("error: did not have value")
             }
             _ => panic!("error: unexpected sequence value {:?}", sv)
         }

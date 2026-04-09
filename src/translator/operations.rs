@@ -1,8 +1,8 @@
 use tree_sitter::Node;
 
-use crate::{event::{Event, Operation}, translator::{SequenceValue, automata::{automaton::Automaton, linear_automaton::LinearAutomaton}, get_children, seq_to_str, translator::Kind, type_constraints::TypeConstraints}, variable::{Variable, stack::VariableMap, types::VariableType, values::VariableValue}};
+use crate::{context::Context, event::{Event, Operation}, translator::{SequenceValue, automata::Automaton, get_children, sequence::Sequence, translator::Kind, type_constraints::TypeConstraints}, variable::{Variable, VariableType, VariableValue}};
 
-use super::{translator::Translator, Sequence, Word};
+use super::{translator::Translator, Word};
 
 // type Interperation = Vec<TypeConstraints>;
 pub struct OperationRepr {
@@ -17,9 +17,9 @@ impl OperationRepr {
         Self { signature, params, iterators, structure_param_id }
     }
 
-    pub fn into_operation(self, id: usize, signature: Sequence, events: Vec<Event>, members: Vec<(String, SequenceValue,Vec<Variable>)>) -> Operation {
-        Operation::new(id, signature, self.params, events, self.iterators, members, self.structure_param_id)
-    }
+    // pub fn into_operation(self, id: usize, signature: Sequence, events: Vec<Event>, members: Vec<(String, SequenceValue,Vec<Variable>)>) -> Operation {
+    //     Operation::new(id, signature, self.params, events, self.iterators, members, self.structure_param_id)
+    // }
 }
 
 impl Translator {
@@ -33,7 +33,7 @@ impl Translator {
     /// - variable names
     /// - iterators (only valid for operations)
     pub fn parse_lhs(&self, lhs: &Node) -> (Sequence, Vec<String>, Vec<usize>) {
-        let mut seq = vec![];
+        let mut seq = Sequence::new();
         let mut operands = vec![];
         let mut has_main_iterator = false;
         let mut iterators: Vec<usize> = vec![];
@@ -73,7 +73,7 @@ impl Translator {
     pub fn get_event_interpretations(&self, event_node: &Node, interpretations: &mut Vec<Vec<TypeConstraints>>) -> bool {
         let seq = self.get_sequence(event_node);
         // TODO: change so that it can also update static variables
-        let ints = self.action_decision_automaton.get_interpretations(&seq, None);
+        let ints = self.action_decision_automaton.get_interpretations(seq.get(), None, &self.operations);
 
         if ints.is_empty() {
             return false;
@@ -83,10 +83,10 @@ impl Translator {
     }
 
     /// insert new operation in self.operations
-    fn create_typed_operation(&mut self, signature: &Vec<Word>, operands: &Vec<String>, types: &Vec<VariableType>, events_node: &Node, iterators: &Vec<usize>, member_names: &Vec<String>) -> bool {
+    fn create_typed_operation(&mut self, signature: &Sequence, operands: &Vec<String>, types: &Vec<VariableType>, events_node: &Node, iterators: &Vec<usize>, member_names: &Vec<String>) -> bool {
         // swap signature
         let mut new_signature = vec![];
-        for w in signature {
+        for w in signature.get() {
             if let Word::Type(VariableType::Any(var_id)) = w {
                 let v = &types[*var_id];
                 if iterators.contains(var_id) {
@@ -114,13 +114,16 @@ impl Translator {
             if event.kind() == "var_definition" {
                 let name = self.get_var_definition_name(&event).to_string();
                 let (seq,params) = self.get_sequence_with_params(&event.child_by_field_name("rhs").unwrap());
-                let sv = self.action_decision_automaton.run(&seq).expect("error: unknown sequence");
+                let sv = self.action_decision_automaton.run(seq.get()).expect("error: unknown sequence");
                 match sv {
-                    SequenceValue::Operation(_) => {
-                        todo!("operation returns");
+                    SequenceValue::Operation(id) => {
+                        match self.operations[id].get_return_type() {
+                            Some(ret) => self.globals.update_variable(&name, ret.default()),
+                            None => panic!("error: operation {seq} does not return anything"),
+                        }
                     }
-                    SequenceValue::Component(id) => {
-                        self.globals.update_variable(&name, VariableType::Component(id).default());
+                    SequenceValue::Structure(id) => {
+                        self.globals.update_variable(&name, VariableType::Structure(id).default());
                     }
                     SequenceValue::Value(ref t) => {
                         self.globals.update_variable(&name, t.default());
@@ -131,17 +134,16 @@ impl Translator {
                 op_events.push(self.get_event(&event));
             }
         }
-        self.add_operation(new_signature, operands.clone(), op_events, iterators, members, None)
+        self.add_operation(Sequence::from(new_signature), operands.clone(), op_events, iterators, members, None)
     }
 
-    pub fn add_operation(&mut self, signature: Vec<Word>, operands: Vec<String>, events: Vec<Event>, iterators: &Vec<usize>, members: Vec<(String,SequenceValue,Vec<Variable>)>, str_id: Option<usize>) -> bool {
-        // println!("adding operation '{}', {events:?}", seq_to_str(&signature));
-        let op_id = self._number_of_builtin_operations + self.operations.len() + 1;
-        let la = LinearAutomaton::new(signature.clone(), SequenceValue::Operation(op_id));
-        if !self.action_decision_automaton.union(la) {
+    pub fn add_operation(&mut self, signature: Sequence, operands: Vec<String>, events: Vec<Event>, iterators: &Vec<usize>, members: Vec<(String,SequenceValue,Vec<Variable>)>, str_id: Option<usize>) -> bool {
+        let op_id = self.operations.len();
+        // println!("adding operation '{}' => {op_id}", signature);
+        if !self.action_decision_automaton.union(signature.clone(), SequenceValue::Operation(op_id)) {
             return false
         }
-        self.operations.insert(op_id, Operation::new(op_id, signature, operands, events, iterators.clone(), members, str_id));
+        self.operations.push(Operation::new(op_id, signature, operands, events, iterators.clone(), members, str_id, None));
         true
     }
 
@@ -167,24 +169,20 @@ impl Translator {
         let sv = self.action_decision_automaton.run(&seq).expect(&format!("error: failed to get sequence {:?}", seq));
         if let SequenceValue::Operation(x) = sv {
             let event;
-            if self.is_builtin_operation(x) {
-                event = Event::new(x, params, vec![], VariableMap::new())
-            } else {
-                event = self.operations.get(&x).expect(&format!("error: unknown operation {x}")).instantiate(params, &self.structures, &mut self.globals);
-            }
+            event = self.operations[x].instantiate(params, &mut Context::empty(), &self.operations, &self.structures, &mut self.globals);
             event
         } else {
             panic!("error: unexpected seq value {:?}", sv);
         }
     }
 
-    pub fn infer_datatypes_from_interpretations(&mut self, interpretations: &Vec<Vec<TypeConstraints>>, signature: &Vec<Word>, operands: &Vec<String>, events_node: &Node, iterators: &Vec<usize>, variables: &Vec<String>) {
+    pub fn infer_datatypes_from_interpretations(&mut self, interpretations: &Vec<Vec<TypeConstraints>>, signature: &Sequence, operands: &Vec<String>, events_node: &Node, iterators: &Vec<usize>, variables: &Vec<String>) {
         if interpretations.len() == 0 { return; }
         self.infer_datatypes_from_interpretations_rec(&TypeConstraints::new(operands.len()), &interpretations, signature, operands, events_node, iterators, variables);
         self.resolve_variables(operands.len()+variables.len());
     }
 
-    fn infer_datatypes_from_interpretations_rec(&mut self, interpretation: &TypeConstraints, rest: &[Vec<TypeConstraints>], signature: &Vec<Word>, operands: &Vec<String>, events_node: &Node, iterators: &Vec<usize>, variables: &Vec<String>) {
+    fn infer_datatypes_from_interpretations_rec(&mut self, interpretation: &TypeConstraints, rest: &[Vec<TypeConstraints>], signature: &Sequence, operands: &Vec<String>, events_node: &Node, iterators: &Vec<usize>, variables: &Vec<String>) {
         if rest.is_empty() { 
             self.create_typed_operation(signature, operands, interpretation.get_types(), events_node, iterators, variables);
             return; 
@@ -196,7 +194,7 @@ impl Translator {
         }
     }
 
-    pub fn parse_operation_definition(&mut self, definition_node: &Node, _signature: &Vec<Word>, aut: Option<&Automaton>) -> (Vec<String>,Vec<Vec<TypeConstraints>>) {
+    pub fn parse_operation_definition(&mut self, definition_node: &Node, _signature: &Sequence, aut: Option<&Automaton>) -> (Vec<String>,Vec<Vec<TypeConstraints>>) {
         let mut interpretations = vec![];
         let mut member_names = vec![];
         for e in get_children(definition_node) {
@@ -208,22 +206,16 @@ impl Translator {
                     member_names.push(name.to_string());
                     self.globals.add_variable(name.clone(), VariableValue::Any(var_id));
                     let seq = self.get_sequence(&e.child_by_field_name("rhs").unwrap());
-                    if seq.len() == 1 && seq[0].is_type() {
-                        let mut tc = TypeConstraints::_new();
-                        tc.intersect_var(&seq[0].get_variable_type().unwrap(), var_id);
-                        ints = vec![tc];
-                    } else {
-                        ints = self.action_decision_automaton.get_interpretations(&seq, Some(var_id));
-                        if ints.len() == 0 && let Some(aut) = aut {
-                            ints = aut.get_interpretations(&seq, Some(var_id));
-                        }
+                    ints = self.action_decision_automaton.get_interpretations(seq.get(), Some(var_id), &self.operations);
+                    if ints.len() == 0 && let Some(aut) = aut {
+                        ints = aut.get_interpretations(seq.get(), Some(var_id), &self.operations);
                     }
                 }
                 "sequence" => {
                     let seq = self.get_sequence(&e);
-                    ints = self.action_decision_automaton.get_interpretations(&seq, None);
+                    ints = self.action_decision_automaton.get_interpretations(seq.get(), None, &self.operations);
                     if ints.len() == 0 && let Some(aut) = aut {
-                        ints = aut.get_interpretations(&seq, None);
+                        ints = aut.get_interpretations(seq.get(), None, &self.operations);
                     }
                 }
                 x => panic!("error: unexpected operation statement: {x}")   // TODO: friendlify
@@ -241,18 +233,14 @@ impl Translator {
         true
     }
 
-    fn handle_operation(&mut self, definition_node: &Node, operands: &Vec<String>, signature: &Vec<Word>, iterators: Vec<usize>) {
+    fn handle_operation(&mut self, definition_node: &Node, operands: &Vec<String>, signature: &Sequence, iterators: Vec<usize>) {
         self.globals.push_layer();
         self.push_signature_params_to_scope(operands);
         let (variables,interpretations) = self.parse_operation_definition(definition_node, signature, None);
-        if interpretations.is_empty() { println!("nothing for {}", seq_to_str(signature)); return }    // TODO: warning
+        if interpretations.is_empty() { println!("nothing for {signature}"); return }    // TODO: warning
         self.operation_member_assert(&variables, operands);
         self.infer_datatypes_from_interpretations(&interpretations, signature, operands, definition_node, &iterators, &variables);
         self.globals.pop_layer();
-    }
-
-    pub fn is_builtin_operation(&self, id: usize) -> bool {
-        id <= self._number_of_builtin_operations
     }
 }
 

@@ -1,3 +1,5 @@
-pub mod state;
-pub mod automaton;
-pub mod linear_automaton;
+mod state;
+mod transition;
+mod automaton;
+
+pub use automaton::Automaton;
