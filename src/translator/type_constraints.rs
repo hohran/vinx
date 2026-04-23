@@ -2,28 +2,15 @@ use std::{cmp::max, fmt::Display};
 
 use crate::variable::VariableType;
 
+/// Structure for manipulating constraints on types of certain variables.
+/// It can be used for type inference or keeping a track of binding mapping.
 #[derive(Debug,PartialEq, Eq, Clone, Hash)]
 pub struct TypeConstraints {
     types: Vec<VariableType>,
 }
 
-impl Display for TypeConstraints {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let types_str: Vec<String> = self.types.iter().map(|x| x.to_string()).collect();
-        write!(f, "[{}]", types_str.join(" "))
-    }
-}
-
 impl TypeConstraints {
-    pub fn new(var_count: usize) -> Self {
-        let mut types = vec![];
-        for i in 0..var_count {
-            types.push(VariableType::Any(i));
-        }
-        Self { types }
-    }
-
-    pub fn _new() -> Self {
+    pub fn new() -> Self {
         Self { types: vec![] }
     }
 
@@ -31,14 +18,13 @@ impl TypeConstraints {
         Self { types }
     }
 
-    pub fn cut_to(self, to: usize) -> Self {
+    /// Retrieve constraints containing only specified amount of types.
+    pub fn cut_to(mut self, to: usize) -> Self {
+        self.resize_to(to);
         Self::from(self.types[..to].to_vec())
     }
 
-    pub fn cut_from(self, from: usize) -> Self {
-        Self::from(self.types[from..].to_vec())
-    }
-
+    /// Get type at certain index.
     pub fn at(&self, at: usize) -> VariableType {
         if at < self.types.len() {
             self.types[at].clone()
@@ -51,6 +37,9 @@ impl TypeConstraints {
         &self.types
     }
 
+    /// Allocate space for new_size types.
+    /// Does nothing if there is already enough space.
+    /// _To reduce the number of types stored, use the method `cut_to`_
     pub fn resize_to(&mut self, new_size: usize) {
         let current_size = self.types.len();
         if new_size == current_size {
@@ -77,7 +66,7 @@ impl TypeConstraints {
         }
     }
 
-    pub fn strictly_matches(&self, other: &Self) -> bool {
+    fn strictly_matches(&self, other: &Self) -> bool {
         for i in 0..self.types.len() {
             if !self.types[i].strictly_matches(&other.types[i]) {
                 return false;
@@ -86,7 +75,7 @@ impl TypeConstraints {
         true
     }
 
-    /// Refine all types of with given binding with new_type.
+    /// Refine all types of given binding with new_type.
     pub fn update_binding(&mut self, binding: usize, new_type: VariableType) {
         for i in 0..self.types.len() {
             let vt = &mut self.types[i];
@@ -94,32 +83,7 @@ impl TypeConstraints {
         }
     }
 
-    fn intersect_at(&mut self, other: &Self, at: usize) -> bool {
-        let self_at = &self.types[at];
-        let other_at = &other.types[at];
-        if !self_at.is_ambiguous() && !other_at.is_ambiguous() {
-            if self_at != other_at {
-                return false;
-            }
-        }
-        // this means that self_at can be refined by other_at
-        if other_at.is_subset_of(&self.types[at]) {
-            // disallow that Any(0) is assignable with [Any(0)]
-            if self_at.get_binding() == other_at.with_inverted_binding().get_binding() && self_at.get_depth() != other_at.get_depth() {
-                return false;
-            }
-            let depth = self_at.get_depth();     // since self in other: other has always lower depth
-            self.update_binding(
-                self.types[at].get_binding()                   // binding of current type
-                .expect("error: expected to be ambiguous"),  // if it is a superset, it should always be ambiguous (it will have a binding number)
-                other.types[at]                  // for the current type
-                .unwrap_depth(depth)            // this is the part to update with
-                .with_inverted_binding()        // invert binding so that it does not get mixed up with currently used bindings (if it is ambiguous)
-            );
-        }
-        true
-    }
-
+    /// Make intersection with another TypeConstraints respecting all bindings.
     pub fn intersect(mut self, mut other: Self) -> Option<Self> {
         let len = max(self.types.len(), other.types.len());
         self.resize_to(len);
@@ -144,28 +108,66 @@ impl TypeConstraints {
                 other = other_c;
             }
         }
-        let mut out = Self::new(self.types.len());
+        // Create final intersection of the two constraints
+        let mut out_types = vec![VariableType::Any(0) ;self.types.len()];
         for i in 0..self.types.len() {
             if let Some(vt) = self.types[i].intersect(&other.types[i]) {
-                out.types[i] = vt;
+                out_types[i] = vt;
             } else {
                 return None;
             }
         }
-        Some(out)
+        Some(Self::from(out_types))
     }
 
-    /// Intersects variable with var_id.
+    fn intersect_at(&mut self, other: &Self, at: usize) -> bool {
+        let self_at = &self.types[at];
+        let other_at = &other.types[at];
+        if !self_at.is_ambiguous() && !other_at.is_ambiguous() {
+            if self_at != other_at {
+                return false;
+            }
+        }
+        // this means that self_at can be refined by other_at
+        if other_at.is_subset_of(&self.types[at]) {
+            // disallow that Any(0) is assignable with [Any(0)]
+            if self_at.get_binding() == other_at.with_inverted_binding().get_binding() && self_at.get_depth() != other_at.get_depth() {
+                return false;
+            }
+            let depth = self_at.get_depth();    // since other in self: other has always lower depth
+            self.update_binding(
+                self.types[at].get_binding()                 // binding of current type
+                .expect("error: expected to be ambiguous"),  // if it is a superset, it should always be ambiguous (it will have a binding number)
+                other.types[at]                 // for the current type
+                .unwrap_depth(depth)            // this is the part to update with
+                .with_inverted_binding()        // invert binding so that it does not get mixed up with currently used bindings (if it is ambiguous)
+            );
+        }
+        true
+    }
+
+    /// Intersects variable of var_id with a new type.
     /// Returns if it is intersectable with var_type
     pub fn intersect_var(&mut self, id: usize, var_type: &VariableType) -> bool {
         self.resize_to(id+1);
         let var = &self.types[id];
         if let Some(prod) = var.intersect(var_type) {
-            self.types[id] = prod;
+            if let Some(b) = var.get_binding() {
+                self.update_binding(b, prod);
+            } else {
+                self.types[id] = prod;
+            }
             true
         } else {
             false
         }
+    }
+}
+
+impl Display for TypeConstraints {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let types_str: Vec<String> = self.types.iter().map(|x| x.to_string()).collect();
+        write!(f, "[{}]", types_str.join(" "))
     }
 }
 
@@ -183,7 +185,6 @@ mod tests {
     #[test]
     fn test_macro() {
         let tc = constaint![(Any(0)) (Any(1))];
-        assert_eq!(tc, TypeConstraints::new(2));
         assert_eq!(tc.types[0].get_binding(), Some(0));
         assert_eq!(tc.types[1].get_binding(), Some(1));
     }

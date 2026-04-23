@@ -140,7 +140,7 @@ impl Translator {
     pub fn add_operation(&mut self, signature: Sequence, operands: Vec<String>, events: Vec<Event>, iterators: &Vec<usize>, members: Vec<(String,SequenceValue,Vec<Variable>)>, str_id: Option<usize>) -> bool {
         let op_id = self.operations.len();
         // println!("adding operation '{}' => {op_id}", signature);
-        if !self.action_decision_automaton.union(signature.clone(), SequenceValue::Operation(op_id)) {
+        if !self.action_decision_automaton.register(signature.clone(), SequenceValue::Operation(op_id)) {
             return false
         }
         self.operations.push(Operation::new(op_id, signature, operands, events, iterators.clone(), members, str_id, None));
@@ -178,7 +178,7 @@ impl Translator {
 
     pub fn infer_datatypes_from_interpretations(&mut self, interpretations: &Vec<Vec<TypeConstraints>>, signature: &Sequence, operands: &Vec<String>, events_node: &Node, iterators: &Vec<usize>, variables: &Vec<String>) {
         if interpretations.len() == 0 { return; }
-        self.infer_datatypes_from_interpretations_rec(&TypeConstraints::new(operands.len()), &interpretations, signature, operands, events_node, iterators, variables);
+        self.infer_datatypes_from_interpretations_rec(&TypeConstraints::new(), &interpretations, signature, operands, events_node, iterators, variables);
         self.resolve_variables(operands.len()+variables.len());
     }
 
@@ -234,13 +234,13 @@ impl Translator {
     }
 
     fn handle_operation(&mut self, definition_node: &Node, operands: &Vec<String>, signature: &Sequence, iterators: Vec<usize>) {
-        self.globals.push_layer();
+        self.globals.push();
         self.push_signature_params_to_scope(operands);
         let (variables,interpretations) = self.parse_operation_definition(definition_node, signature, None);
         if interpretations.is_empty() { println!("nothing for {signature}"); return }    // TODO: warning
         self.operation_member_assert(&variables, operands);
         self.infer_datatypes_from_interpretations(&interpretations, signature, operands, definition_node, &iterators, &variables);
-        self.globals.pop_layer();
+        self.globals.pop();
     }
 }
 

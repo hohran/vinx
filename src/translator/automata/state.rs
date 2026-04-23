@@ -125,11 +125,11 @@ mod tests {
         s.add_transition(word!(Int), 1);
         s.add_transition(word!(Any(1)), 2);
         s.add_transition(word!(Pos), 4);
-        let mut bind_mapping = TypeConstraints::_new();
+        let mut bind_mapping = TypeConstraints::new();
         bind_mapping.intersect_var(1, &vtype!(Int));
         let pos_trans = s.get_ordered_transitions(&word!(Int), &bind_mapping);
         assert_eq!(pos_trans, [&Transition::from(word!(Int)),&Transition::from(word!(Any(1)))]);
-        bind_mapping = TypeConstraints::_new();
+        bind_mapping = TypeConstraints::new();
         bind_mapping.intersect_var(1, &vtype!(Pos));
         let pos_trans = s.get_ordered_transitions(&word!(Int), &bind_mapping);
         assert_eq!(pos_trans, [&Transition::from(word!(Int))]);

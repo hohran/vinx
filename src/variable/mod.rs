@@ -1,9 +1,9 @@
 mod types;
-mod values;
 mod stack;
 mod variable;
+mod value;
 
-pub use stack::{VariableMap,Stack};
+pub use stack::{Scope,Stack};
 pub use types::VariableType;
 pub use variable::Variable;
-pub use values::{VariableValue,Direction,Structure,Effect,Color};
+pub use value::{VariableValue,Direction,Structure,Effect,Color};

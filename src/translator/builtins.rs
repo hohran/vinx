@@ -58,10 +58,9 @@ pub fn load_builtin_operations(aut: &mut Automaton) -> Vec<Operation> {
         (Color "image" Int "x" Int) => VariableType::Image, image::colored;
         ("load" "image" "from" String) => VariableType::Image, image::load_from;
     );
-    // TODO: draw into image .. ?
     let mut ops = vec![];
     for (i,(seq,ret,op)) in builtins.into_iter().enumerate() {
-        if !aut.union(seq.clone(), SequenceValue::Operation(i)) {
+        if !aut.register(seq.clone(), SequenceValue::Operation(i)) {
             panic!("error: union did not create any new states");
         }
         ops.push(Operation::from_builtin(i, seq.clone(), *op, ret.clone()));
@@ -78,7 +77,7 @@ pub fn load_builtin_structures(aut: &mut Automaton) -> (usize,Vec<StructureTempl
     let mut structures = vec![];
     for (i,seq) in builtins.into_iter().enumerate() {
         let types = seq.get_types();
-        if !aut.union(seq.clone(), SequenceValue::Structure(i)) {
+        if !aut.register(seq.clone(), SequenceValue::Structure(i)) {
             panic!("error: union did not create any new states");
         }
         let param_names: Vec<String> = types.iter().enumerate().map(|(i,_)| i.to_string()).collect();

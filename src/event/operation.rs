@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt::Debug};
 
-use crate::{context::Context, event::{builtins::Builtin, event::{Event, EventEffect}}, translator::{SequenceValue, StructureTemplate, sequence::Sequence}, variable::{Variable, Stack, VariableMap, VariableType, VariableValue}};
+use crate::{context::Context, event::{builtins::Builtin, event::{Event, EventEffect}}, translator::{SequenceValue, StructureTemplate, sequence::Sequence}, variable::{Variable, Stack, Scope, VariableType, VariableValue}};
 
 pub type Operations = Vec<Operation>;
 
@@ -50,15 +50,15 @@ impl Operation {
     pub fn instantiate(&self, params: Vec<Variable>, context: &mut Context, operations: &Operations, structures: &Vec<StructureTemplate>, stack: &mut Stack) -> Event {
         // println!("instantiate op {} with {params:?}", self.id);
         if self.members.is_empty() {
-            return Event::new(self.id, params, self.effect.clone(), VariableMap::new());
+            return Event::new(self.id, params, self.effect.clone(), Scope::new());
         }
-        stack.push_layer();
+        stack.push();
         for i in 0..params.len() {
             let name = self.operands[i].clone();
             let value = params[i].get_value(stack).clone();
             stack.add_variable(name, value);
         }
-        let mut members = VariableMap::new();
+        let mut members = Scope::new();
         // TODO: refactor
         for (name,val,ps) in &self.members {
             let member_val = match val {
@@ -80,13 +80,13 @@ impl Operation {
             members.insert(name.clone(), member_val.clone());
             stack.add_variable(name.clone(), member_val);
         }
-        stack.pop_layer();
+        stack.pop();
         Event::new(self.id, params, self.effect.clone(), members)
     }
 
-    pub fn push_to_stack(&self, params: &Vec<Variable>, variables: &VariableMap, stack: &mut Stack) {
+    pub fn push_to_stack(&self, params: &Vec<Variable>, variables: &Scope, stack: &mut Stack) {
         assert!(params.len() == self.operands.len(), "error: incorrect number of parameters: expected {}, got {}", self.operands.len(), params.len());
-        stack.push_layer_with(variables.clone());
+        stack.push_scope(variables.clone());
         for i in 0..self.operands.len() {
             let val = params[i].get_value(stack);
             stack.add_variable(self.operands[i].clone(), val.clone());

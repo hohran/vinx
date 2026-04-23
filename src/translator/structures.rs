@@ -81,7 +81,7 @@ impl Translator {
     }
 
     fn handle_structure(&mut self, definition_node: &Node, operands: &Vec<String>, signature: &Sequence) {
-        self.globals.push_layer();
+        self.globals.push();
         self.push_signature_params_to_scope(operands);
         let mut method_aut = Automaton::new();
         let (structure_interpretations,methods) = self.get_structure_interpretations(operands, definition_node, &mut method_aut);
@@ -91,14 +91,14 @@ impl Translator {
             self.create_typed_structure(signature, operands, int.get_types()[..operands.len()].to_vec(), definition_node, structure_id);
             self.create_methods(&method_aut, &methods, structure_id, &get_children(definition_node));
         }
-        self.globals.pop_layer();
+        self.globals.pop();
     }
 
     fn get_structure_interpretations(&mut self, operands: &Vec<String>, definition_node: &Node, method_aut: &mut Automaton) -> (HashSet<TypeConstraints>,Vec<(OperationRepr,usize)>) {
         let mut methods: Vec<(OperationRepr,usize)> = vec![];
         let mut structure_interpretations = HashSet::new();
         let mut member_names = vec![];
-        structure_interpretations.insert(TypeConstraints::_new());
+        structure_interpretations.insert(TypeConstraints::new());
         let stmts = get_children(definition_node);
         for i in 0..stmts.len() {
             let stmt = &stmts[i];
@@ -112,7 +112,7 @@ impl Translator {
                     structure_interpretations = self.update_structure_interpretations_with_var(structure_interpretations, var_id, &seq);
                 }
                 "definition" => {
-                    self.globals.push_layer();
+                    self.globals.push();
                     let op_nodes = get_children(&stmt);
                     let op = self.parse_method_signature(&op_nodes[0]);
                     let (op_members,interpretations) = self.parse_operation_definition(&op_nodes[1], &op.signature, Some(method_aut));
@@ -122,7 +122,7 @@ impl Translator {
                     structure_interpretations = self.update_structure_interpretations(structure_interpretations, &op, interpretations, constraint_size, method_aut, i);
                     self.resolve_variables(op.params.len()+op_members.len());
                     methods.push((op,i));
-                    self.globals.pop_layer();
+                    self.globals.pop();
                 }
                 x => {
                     panic!("error: structure definition can only contain variable and operation definitions, got {x:?}")
@@ -143,7 +143,7 @@ impl Translator {
         for (method_signature, sv) in method_aut.get_all_sequences() {
             let SequenceValue::Operation(method_node_id) = sv else { panic!(); };
             let (op,_) = methods.iter().find(|m| m.1 == method_node_id).expect("error: could not find specified node");
-            self.globals.push_layer();
+            self.globals.push();
             let (new_signature,str_id) = self.rewrite_method_signature(structure_id, method_signature, op);
             let mut events = vec![];
             let mut op_members = vec![];
@@ -169,7 +169,7 @@ impl Translator {
                     x => panic!("error: unexpected int op definition: {x}"),
                 }
             }
-            self.globals.pop_layer();
+            self.globals.pop();
             self.add_operation(new_signature, op.params.clone(), events, &op.iterators, op_members, str_id);
         }
     }
@@ -214,8 +214,8 @@ impl Translator {
         let mut new_structure_ints = HashSet::new();
         for mut struct_int in structure_interpretations {
             assert_eq!(struct_int.get_types().len()+2, var_id);
-            if rhs.len() == 1 && let Some(t) = rhs.at(0).get_variable_type() {
-                let ret = struct_int.intersect_var(var_id, &t);
+            if rhs.len() == 1 && let Some(t) = rhs.at(0).get_type() {
+                let ret = struct_int.intersect_var(var_id, t);
                 assert!(ret);
                 new_structure_ints.insert(struct_int);
                 continue;
@@ -265,7 +265,7 @@ impl Translator {
             members.push((name,sv,params));
         }
         // println!("adding structure {id} with signature \"{}\"", Sequence::from(new_signature.clone()));
-        if !self.action_decision_automaton.union(Sequence::from(new_signature), SequenceValue::Structure(id)) {
+        if !self.action_decision_automaton.register(Sequence::from(new_signature), SequenceValue::Structure(id)) {
             // println!("nope");
             return;
         }
@@ -308,6 +308,6 @@ impl Translator {
             }
         }
         let op_id = method_family;
-        aut.union(Sequence::from(new_signature), SequenceValue::Operation(op_id));
+        aut.register(Sequence::from(new_signature), SequenceValue::Operation(op_id));
     }
 }

@@ -1,6 +1,5 @@
-use std::collections::HashMap;
-
 use crate::{context::Context, event::{Event, Operations}, variable::Stack};
+use std::collections::HashMap;
 
 #[derive(Debug,Clone)]
 pub enum Timestamp {
@@ -18,15 +17,6 @@ pub struct Action {
     onetime: bool,
     activated: bool,
 }
-
-// impl Display for Action {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         let onetime_str = if self.onetime { "at" } else { "every" };
-//         let act_str = match self.to_activate { Timestamp::Frame(x) => format!("{x} frames"), Timestamp::Millis(x) => format!("{x} ms"), };
-//         let ev_strs: Vec<String> = self.events.iter().map(|x| x.to_string_with_indent(4)).collect();
-//         write!(f, "{onetime_str} {act_str} do {{\n  {}\n}}", ev_strs.join("\n  "))
-//     }
-// }
 
 impl Action {
     pub fn new(name: String, active: bool, to_activate: Timestamp, time_accumulator: Timestamp, events: Vec<Event>, onetime: bool) -> Self {
@@ -84,12 +74,12 @@ impl Action {
         }
     }
 
-    pub fn trigger(&mut self, context: &mut Context, scope: &mut Stack, action_activeness: &mut HashMap<String,bool>, operations: &Operations ) {
+    pub fn trigger(&mut self, context: &mut Context, stack: &mut Stack, action_activeness: &mut HashMap<String,bool>, operations: &Operations ) {
         if self.onetime && self.activated { return; }
         match (&self.to_activate, &self.time_accumulator) {
             (Timestamp::Frame(i), Timestamp::Frame(acc)) => {
                 if *acc >= *i {
-                    self.process_events(context, scope, action_activeness, operations);
+                    self.process_events(context, stack, action_activeness, operations);
                     if self.onetime {
                         self.activated = true;
                     }
@@ -100,7 +90,7 @@ impl Action {
                 let mut tmp_acc = *acc;
                 let tmp_i = *i;
                 while tmp_acc >= tmp_i {
-                    self.process_events(context, scope, action_activeness, operations);
+                    self.process_events(context, stack, action_activeness, operations);
                     if self.onetime {
                         self.activated = true;
                         break;
@@ -113,59 +103,9 @@ impl Action {
         }
     }
 
-    fn process_events(&mut self, context: &mut Context, scope: &mut Stack, action_activeness: &mut HashMap<String,bool>, operations: &Operations) {
+    fn process_events(&mut self, context: &mut Context, stack: &mut Stack, action_activeness: &mut HashMap<String,bool>, operations: &Operations) {
         for event in &mut self.events {
-            event.process(context, scope, action_activeness, operations);
+            event.process(context, stack, action_activeness, operations);
         }
-    }
-}
-
-pub struct ActionBuilder {
-    pub name: Option<String>,
-    pub active: bool,
-    pub to_activate: Option<Timestamp>,
-    pub events: Option<Vec<Event>>,
-    pub onetime: bool
-}
-
-impl ActionBuilder {
-    pub fn new() -> Self {
-        ActionBuilder { name: None, active: true, to_activate: None, events: None, onetime: false }
-    }
-
-    pub fn with_events(mut self, events: Vec<Event>) -> Self {
-        self.events = Some(events);
-        self
-    }
-
-    pub fn named(mut self, name: &str) -> Self {
-        self.name = Some(name.to_string());
-        self
-    }
-
-    pub fn onetime(mut self, onetime: bool) -> Self {
-        self.onetime = onetime;
-        self
-    }
-
-    pub fn activated_at(mut self, ts: Timestamp) -> Self {
-        self.to_activate = Some(ts);
-        self
-    }
-
-    pub fn build(self) -> Action {
-        let acc = match &self.to_activate {
-            Some(Timestamp::Frame(_)) => Timestamp::Frame(0),
-            Some(Timestamp::Millis(_)) => Timestamp::Millis(0),
-            None => panic!("to_activate must be set before building"),
-        };
-        Action::new(
-            self.name.expect("Action must have a name"),
-            self.active,
-            self.to_activate.expect("Action must have a to_activate timestamp"),
-            acc,
-            self.events.unwrap_or_else(|| Vec::new()),
-            self.onetime
-        )
     }
 }

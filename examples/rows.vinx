@@ -115,18 +115,19 @@ $r8 = [
 $rows = [$r1,$r2,$r3,$r4,$r5,$r6,$r7,$r8];
 
 // draw 20x20 square
-draw $c square at $p = {
+draw $color square at $p = {
     $p2 = (0,0);
     set $p2 to $p;
     $s = 20;
     move $p2 right by $s;
     move $p2 down by $s;
-    draw $c rectangle from $p to $p2;
+    draw $color rectangle from $p to $p2;
 }
+
 // used for drawing out row with changing colors
-draw [$c] square at [$p*] = draw $c square at $p;
+draw [$x] square at [$p*] = draw $x square at $p;
 // multiple rows, each with its color scheme
-draw [$c] square at [$p*] = draw $c square at $p;
+draw [$z] square at [$p*] = draw $z square at $p;
 
 // every odd row will have red/green squares
 $odd_row_colors = [red,green];

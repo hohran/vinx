@@ -1,9 +1,13 @@
 use std::collections::HashMap;
 
-use crate::{ event::Operations, translator::{automata::state::StateId, sequence::Sequence, type_constraints::TypeConstraints}};
+use crate::{ event::Operations, translator::{sequence::Sequence, type_constraints::TypeConstraints}};
 
-use super::{super::{SequenceValue, Word}, state::State};
+use super::{State, StateId, super::{SequenceValue, Word}};
 
+/// Structure for registering sequences, determining their values (method `run`), and infering types
+/// or getting interpretations of ambiguous ones (method `get_interpretations`).
+/// It is called automaton because of its underlying functionality derived from 
+/// finite state automata.
 pub struct Automaton {
     states: Vec<State>,
     return_values: HashMap<StateId, SequenceValue>,
@@ -21,9 +25,10 @@ impl Automaton {
         new_state_id
     }
 
-    /// Performs a union with a linear automaton `la`.
-    /// This function will return `false`, if another sequence was overwritten.
-    pub fn union(&mut self, seq: Sequence, val: SequenceValue) -> bool {
+    /// Registers a return value for given sequence.
+    /// This function will return `false`, if such sequence is already registered.
+    /// _Theoretically speaking, this operation is equivalent to an automata union._
+    pub fn register(&mut self, seq: Sequence, val: SequenceValue) -> bool {
         let mut cur_state = 0;
         for transition in seq.into_vec() {
             let next_state = self.states[cur_state].use_transition(&transition);
@@ -45,10 +50,10 @@ impl Automaton {
 
     /// Performs a run of automaton over sequence `seq` and returns its value (if it exists).
     pub fn run(&self, seq: &Vec<Word>) -> Option<SequenceValue> {
-        if seq.len() == 1 && let Some(t) = seq[0].get_variable_type() {
-            return Some(SequenceValue::Value(t));
+        if seq.len() == 1 && let Some(t) = seq[0].get_type() {
+            return Some(SequenceValue::Value(t.clone()));
         }
-        self.run_from(seq, 0, &TypeConstraints::_new())
+        self.run_from(seq, 0, &TypeConstraints::new())
     }
 
     /// Performs a run of automaton over the rest of sequence `seq` from state `cur`.
@@ -86,12 +91,12 @@ impl Automaton {
     pub fn get_interpretations(&self, seq: &Vec<Word>, ret_id: Option<usize>, operations: &Operations) -> Vec<TypeConstraints> {
         if seq.len() == 1 && let Word::Type(t) = &seq[0] {
             if let Some(r) = ret_id {
-                let mut tc = TypeConstraints::_new();
+                let mut tc = TypeConstraints::new();
                 tc.intersect_var(r, t);
                 return vec![tc];
             }
         }
-        self.get_interpretations_from(seq, 0, TypeConstraints::_new(), TypeConstraints::_new(), ret_id, operations)
+        self.get_interpretations_from(seq, 0, TypeConstraints::new(), TypeConstraints::new(), ret_id, operations)
     }
 
     fn get_interpretations_from(&self, seq: &[Word], cur: StateId, mut cur_constraints: TypeConstraints, mut binding: TypeConstraints, ret_id: Option<usize>, operations: &Operations) -> Vec<TypeConstraints> {
@@ -154,12 +159,12 @@ impl Automaton {
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
+    use crate::variable::VariableType;
 
     use super::{Automaton, State};
     use super::Word;
     use super::SequenceValue;
     use crate::translator::sequence::Sequence;
-    use crate::variable::types::VariableType;
     use crate::{seq,word,vtype};
 
     impl Automaton {
@@ -196,7 +201,7 @@ mod tests {
         let la2 = (seq!("a" Pos "c"), SequenceValue::Operation(2));
         let mut a = Automaton::from(la1);
         assert_eq!(a.len(), 4);
-        a.union(la2.0,la2.1);
+        a.register(la2.0,la2.1);
         assert_eq!(a.len(), 6);
         assert_eq!(a.run(seq!("a" [Int] "b").get()), Some(SequenceValue::Operation(1)));
         assert_eq!(a.run(seq!("a" Pos "c").get()), Some(SequenceValue::Operation(2)));
@@ -209,7 +214,7 @@ mod tests {
         let la2 = (seq!(a (Any(0)) b), SequenceValue::Operation(2));
         let mut a = Automaton::from(la1);
         assert_eq!(a.len(), 4);
-        a.union(la2.0,la2.1);
+        a.register(la2.0,la2.1);
         assert_eq!(a.len(), 6);
         assert_eq!(
             a.run(seq!(a Int b).get()),
@@ -224,9 +229,9 @@ mod tests {
         let la3 = (seq!("a" [Any(0)] "b"), SequenceValue::Operation(3));
         let mut a = Automaton::from(la1);
         assert_eq!(a.len(), 4);
-        a.union(la2.0,la2.1);
+        a.register(la2.0,la2.1);
         assert_eq!(a.len(), 6);
-        a.union(la3.0,la3.1);
+        a.register(la3.0,la3.1);
         assert_eq!(a.len(), 8);
         assert_eq!(a.run(seq!("a" [Int] "b").get()), Some(SequenceValue::Operation(1)));
         assert_eq!(a.run(seq!("a" Int "b").get()), Some(SequenceValue::Operation(2)));
@@ -238,7 +243,7 @@ mod tests {
         let la1 = (seq!(a Int b), SequenceValue::Operation(1));
         let la2 = (seq!(a (Any(0)) c), SequenceValue::Operation(2));
         let mut a = Automaton::from(la1);
-        a.union(la2.0,la2.1);
+        a.register(la2.0,la2.1);
         assert_eq!(a.run(seq!(a Int c).get()), Some(SequenceValue::Operation(2)));
     }
 
@@ -250,10 +255,10 @@ mod tests {
         let la4 = (seq!("a" Int "a" (Any(0)) "b"), SequenceValue::Operation(4));
         let la5 = (seq!("a" Int "a" Pos "b"), SequenceValue::Operation(5));
         let mut a = Automaton::from(la1);
-        a.union(la2.0,la2.1);
-        a.union(la3.0,la3.1);
-        a.union(la4.0,la4.1);
-        a.union(la5.0,la5.1);
+        a.register(la2.0,la2.1);
+        a.register(la3.0,la3.1);
+        a.register(la4.0,la4.1);
+        a.register(la5.0,la5.1);
         assert_eq!(a.run(seq!("a" Int "a" Int "a").get()), Some(SequenceValue::Operation(1)));
         assert_eq!(a.run(seq!("a" Int "a" Pos "a").get()), Some(SequenceValue::Operation(2)));
         assert_eq!(a.run(seq!("a" Color "a" Int "a").get()), Some(SequenceValue::Operation(3)));
@@ -272,7 +277,7 @@ mod tests {
         let mut a = Automaton::new();
         for i in 0..ops.len() {
             let la = (ops[i].clone(), SequenceValue::Operation(i));
-            a.union(la.0,la.1);
+            a.register(la.0,la.1);
         }
         let paths = a.get_interpretations(seq!("a" (Any(0)) "b").get(), None, &vec![]);
         assert_eq!(paths.len(), 3);
@@ -288,7 +293,7 @@ mod tests {
         let mut a = Automaton::new();
         for i in 0..ops.len() {
             let la = (ops[i].clone(), SequenceValue::Operation(i));
-            a.union(la.0,la.1);
+            a.register(la.0,la.1);
         }
         let paths = a.get_interpretations(seq!(a (Any(0)) b (Any(0)) c).get(), None, &vec![]);
         assert_eq!(paths.len(), 3);
@@ -301,7 +306,7 @@ mod tests {
         let mut a = Automaton::new();
         for i in 0..ops.len() {
             let la = (ops[i].clone(), SequenceValue::Operation(i));
-            a.union(la.0,la.1);
+            a.register(la.0,la.1);
         }
         let paths = a.get_interpretations(seq!(a (Any(0)) b).get(), None, &vec![]);
         assert_eq!(paths.len(), 3);
@@ -318,7 +323,7 @@ mod tests {
         let mut a = Automaton::new();
         for i in 0..ops.len() {
             let la = (ops[i].clone(), SequenceValue::Operation(i));
-            a.union(la.0,la.1);
+            a.register(la.0,la.1);
         }
         let paths = a.get_interpretations(seq!(a [Any(0)] (Any(0))).get(), None, &vec![]);
         assert_eq!(paths.len(), 3);

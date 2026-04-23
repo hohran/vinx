@@ -13,6 +13,7 @@ pub type Applicability = usize;
 
 impl Transition {
     /// Check if transition is applicable for word, given the current binding for `Any` types.
+    #[allow(dead_code)]
     pub fn is_applicable(&self, word: &Word, binding: &TypeConstraints) -> bool {
         assert!(!word.is_ambiguous());
         if !self.0.is_ambiguous() {
@@ -21,7 +22,7 @@ impl Transition {
         let Word::Type(word_t) = word else {
             return false;
         };
-        let self_type = self.0.get_variable_type().unwrap();
+        let self_type = self.0.get_type().unwrap();
         if self_type.get_depth() > word_t.get_depth() {
             return false;
         }
@@ -43,14 +44,14 @@ impl Transition {
         if word.is_ambiguous() {
             return None;
         }
-        let Some(mut transition_t) = self.0.get_variable_type() else {
+        let Some(transition_t) = self.0.get_type() else {
             return None;
         };
         if !transition_t.is_ambiguous() {
             return None;
         }
         // If it was a keyword, it would have matched before
-        let Some(ref mut word_t) = word.get_variable_type() else {
+        let Some(word_t) = word.get_type() else {
             return None;
         };
         let transition_depth = transition_t.get_depth();
@@ -58,14 +59,14 @@ impl Transition {
             return None;
         }
         let word_t = word_t.unwrap_depth(transition_depth);
-        transition_t = binding.at(transition_t.get_binding().unwrap());
-        if &transition_t == word_t {
+        let bind_transition = &binding.at(transition_t.get_binding().unwrap());
+        if bind_transition == word_t {
             return Some(Applicability::MAX-1);
         }
-        if !transition_t.is_ambiguous() {
+        if !bind_transition.is_ambiguous() {
             return None;
         }
-        let bind_transition_depth = transition_t.get_depth();
+        let bind_transition_depth = bind_transition.get_depth();
         if bind_transition_depth > word_t.get_depth() {
             return None;
         }
@@ -97,20 +98,17 @@ impl Transition {
     pub fn is_ambiguous(&self) -> bool {
         self.0.is_ambiguous()
     }
-
-    // pub fn compare_applicability(&self, other: &Self)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::variable::types::VariableType;
     use crate::{vtype,word};
 
     #[test]
     fn test_is_applicable() {
         // keywords
-        let empty_bind = &TypeConstraints::_new();
+        let empty_bind = &TypeConstraints::new();
         assert!(Transition::from(word!("a")).is_applicable(&word!("a"), empty_bind));
         assert!(!Transition::from(word!("b")).is_applicable(&word!("a"), empty_bind));
         // types
@@ -156,7 +154,7 @@ mod tests {
     #[test]
     fn test_get_applicability() {
         // keywords
-        let empty_bind = &TypeConstraints::_new();
+        let empty_bind = &TypeConstraints::new();
         let t_a = Transition::from(word!("a"));
         let t_b = Transition::from(word!("b"));
         assert!(t_a.get_applicability(t_a.get(), empty_bind).is_some());

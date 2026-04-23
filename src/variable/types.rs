@@ -1,9 +1,15 @@
 use std::fmt::Display;
 
-use crate::{variable::values::Structure, video::Frame};
+use crate::video::Frame;
 
-use super::values::{Direction, VariableValue};
+use super::{Structure, Direction, VariableValue};
 
+/// Create VariableType
+///
+/// Int -> VariableType::Int
+/// String -> VariableType::String
+/// ...
+/// [Int] -> VariableType::Vec(VariableType::Int)
 #[macro_export]
 macro_rules! vtype {
     ( [ $($x:tt)+ ] ) => { VariableType::Vec(Box::new(vtype!($($x)+))) };
@@ -31,6 +37,8 @@ pub enum VariableType {
     Any(usize),
     /// Type for user defined structures
     Structure(usize),
+    /// Helper type for structure parsing
+    /// Should not appear in actual sequences
     SelfReference,
 }
 
@@ -52,6 +60,7 @@ impl Display for VariableType {
     }
 }
 
+// Any is expected to match Any, even if they have a different binding
 impl PartialEq for VariableType {
     fn eq(&self, other: &Self) -> bool {
         match (self,other) {
@@ -79,8 +88,8 @@ impl VariableType {
     }
 
     /// Returns default value for given type
-    /// Int -> Int(0)
-    /// Pos -> Pos(0,0)
+    /// * Int -> Int(0)
+    /// * Pos -> Pos(0,0)
     pub fn default(&self) -> VariableValue {
         match &self {
             VariableType::Vec(x) => VariableValue::Vec(vec![x.default().to_var()]),
@@ -90,19 +99,20 @@ impl VariableType {
             VariableType::Color => VariableValue::Color([0,0,0].into()),
             VariableType::String => VariableValue::String("".to_string()),
             VariableType::Image => VariableValue::Image(Frame::new(0,0)),
-            VariableType::Effect => VariableValue::Effect(crate::variable::values::Effect::Blur),
+            VariableType::Effect => VariableValue::Effect(super::Effect::Blur),
             VariableType::Any(x) => VariableValue::Any(*x),
             VariableType::Structure(x) => VariableValue::Structure(Structure::default(*x)),
             VariableType::SelfReference => VariableValue::SelfReference,
         }
     }
 
-    /// Pos + Int -> None
-    /// Int + Int -> Int
-    /// Any(1) + Int -> Int
-    /// [Any(1)] + [[Int]] -> [[Int]]
-    /// Any(1) + Any(2) -> Any(1)
-    /// Any(1) + [Any(1)] -> None !!! think about it
+    /// * Pos + Int -> None
+    /// * Int + Int -> Int
+    /// * Any(1) + Int -> Int
+    /// * \[Any(1)] + \[\[Int]] -> [[Int]]
+    /// * Any(1) + Any(2) -> Any(1)
+    /// * Any(1) + \[Any(1)] -> None !!! think about it
+    /// * Any(1) + \[Any(2)] -> \[Any(2)] - this is ok, because the vector contains different binding
     pub fn intersect(&self, other: &Self) -> Option<Self> {
         match (self,other) {
             (VariableType::Vec(x), VariableType::Vec(y)) => x.intersect(y).map(|t| VariableType::Vec(Box::new(t))),
@@ -124,13 +134,13 @@ impl VariableType {
         }
     }
 
-    /// Int in Int -> false
-    /// Int in Pos -> false
-    /// Int in Any(1) -> true
-    /// Any(1) in Int -> false
-    /// Any(1) in Any(2) -> true
-    /// \[Int] in \[Any(1)] -> true
-    /// \[Int] in Any(1) -> true
+    /// * Int in Int -> false
+    /// * Int in Pos -> false
+    /// * Int in Any(1) -> true
+    /// * Any(1) in Int -> false
+    /// * Any(1) in Any(2) -> true
+    /// * \[Int] in \[Any(1)] -> true
+    /// * \[Int] in Any(1) -> true
     pub fn is_subset_of(&self, other: &Self) -> bool {
         if let VariableType::Any(_) = other { 
             return true;
@@ -142,11 +152,11 @@ impl VariableType {
     }
 
     /// Check whether self is assignable to other
-    /// Int to Int -> true
-    /// Pos to Any -> true
-    /// Pos to Int -> false
+    /// * Int to Int -> true
+    /// * Pos to Any -> true
+    /// * Pos to Int -> false
     ///
-    /// This function should be updated with more complex type system
+    /// This function expects the type system to be more complicated
     pub fn is_assignable_to(&self, other: &Self) -> bool {
         if other.get_binding().is_some() {
             return self.get_depth() >= other.get_depth();
@@ -155,9 +165,9 @@ impl VariableType {
     }
 
     /// Get binding of ambiguous types
-    /// Any(1) -> 1
-    /// [[Any(3)]] -> 3
-    /// Int -> None
+    /// * Any(1) -> 1
+    /// * \[\[Any(3)]] -> 3
+    /// * Int -> None
     pub fn get_binding(&self) -> Option<usize> {
         match self {
             VariableType::Any(x) => Some(*x),
@@ -176,7 +186,7 @@ impl VariableType {
         }
     }
 
-    /// Set binding of ambigous type.
+    /// Set binding of ambigous type
     /// If the type is not ambiguous, nothing happens
     /// Any(x) + 42 -> Any(42)
     /// [[Any(y)]] + 1 -> [[Any(1)]]
@@ -191,9 +201,9 @@ impl VariableType {
     }
 
     /// If the binding number matches, switch ambiguous type for a new one
-    /// Any(1).set_binding_type(1, Int) -> Int
-    /// Any(1).set_binding_type(2, Int) -> Any(1)
-    /// [Any(1)].set_binding_type(1, Int) -> [Int]
+    /// * Any(1).set_binding_type(1, Int) -> Int
+    /// * Any(1).set_binding_type(2, Int) -> Any(1)
+    /// * [Any(1)].set_binding_type(1, Int) -> [Int]
     pub fn set_binding_type(&mut self, binding: usize, new_type: &Self) {
         match self {
             VariableType::Any(x) => {
@@ -210,54 +220,62 @@ impl VariableType {
         self == other && self.get_binding() == other.get_binding()
     }
 
-    /// Int -> 0
-    /// \[Pos] -> 1
+    /// * Int -> 0
+    /// * \[Pos] -> 1
     pub fn get_depth(&self) -> usize {
         let mut x = self;
         let mut depth = 0;
-        loop {
-            match x {
-                VariableType::Vec(nx) => {
-                    depth += 1;
-                    x = nx;
-                }
-                _ => {
-                    return depth;
-                }
-            }
+        while let VariableType::Vec(nx) = x {
+            depth += 1;
+            x = nx;
         }
+        depth
     }
 
     /// Unwrap this type by `depth`.
-    /// \[Int] - 1 => Int
-    /// \[\[Pos]] - 1 => \[Pos]
+    /// * \[Int] - 1 => Int
+    /// * \[\[Pos]] - 1 => \[Pos]
     pub fn unwrap_depth(&self, mut depth: usize) -> &Self {
         let mut x = self;
-        loop {
-            if depth == 0 { return x }
-            if let VariableType::Vec(nx) = x {
-                x = nx.as_ref();
-                depth -= 1;
-            } else {
+        while depth != 0 {
+            let VariableType::Vec(nx) = x else {
                 panic!("error: {:?} is not deep enough", self);
-            }
+            };
+            x = nx.as_ref();
+            depth -= 1;
         }
+        x
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::vtype;
 
     #[test]
     fn test_macro() {
-        // TODO
+        assert_eq!(vtype!(Int), VariableType::Int);
+        assert_eq!(vtype!(Pos), VariableType::Pos);
+        assert_eq!(vtype!(Any(1)), VariableType::Any(1));
+        assert_eq!(vtype!(Any(2)), VariableType::Any(2));
+        assert_eq!(vtype!([Any(1)]), VariableType::Vec(Box::new(VariableType::Any(1))));
+        assert_eq!(vtype!([[Int]]), VariableType::Vec(Box::new(VariableType::Vec(Box::new(VariableType::Int)))));
     }
 
     #[test]
     fn test_is_ambiguous() {
-        // TODO
+        let vt1 = vtype!(Pos);
+        let vt2 = vtype!(Int);
+        let vt3 = vtype!(Any(1));
+        let vt4 = vtype!(Any(2));
+        let vt5 = vtype!([Any(1)]);
+        let vt6 = vtype!([[Int]]);
+        assert!(!vt1.is_ambiguous());
+        assert!(!vt2.is_ambiguous());
+        assert!(vt3.is_ambiguous());
+        assert!(vt4.is_ambiguous());
+        assert!(vt5.is_ambiguous());
+        assert!(!vt6.is_ambiguous());
     }
 
     #[test]
@@ -320,6 +338,10 @@ mod tests {
         let v1 = vtype!(Structure(1));
         let v2 = vtype!(Structure(1));
         assert_eq!(v1,v2);
+        // Any(i) != [Any(i)]
+        let v1 = vtype!(Any(1));
+        let v2 = vtype!([Any(1)]);
+        assert_ne!(v1,v2);
     }
 
     #[test]
@@ -413,9 +435,9 @@ mod tests {
         let vt2 = vtype!([Int]);
         let vt3 = vtype!([[Int]]);
         let vt4 = vtype!([[[Int]]]);
-        assert_eq!(vt1.unwrap_depth(0), vtype!(Int));
-        assert_eq!(vt2.unwrap_depth(1), vtype!(Int));
-        assert_eq!(vt3.unwrap_depth(2), vtype!(Int));
-        assert_eq!(vt4.unwrap_depth(3), vtype!(Int));
+        assert_eq!(vt1.unwrap_depth(0), &vtype!(Int));
+        assert_eq!(vt2.unwrap_depth(1), &vtype!(Int));
+        assert_eq!(vt3.unwrap_depth(2), &vtype!(Int));
+        assert_eq!(vt4.unwrap_depth(3), &vtype!(Int));
     }
 }
