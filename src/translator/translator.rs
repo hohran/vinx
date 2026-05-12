@@ -97,11 +97,13 @@ impl Translator {
         let definition = &children[1];
         // if definition contains operation definitions, it is structure
         let is_structure = get_children(definition).iter().find(|n| n.kind() == "definition").is_some();
+        self.globals.push();
         if is_structure {
             self.parse_structure(signature, definition);
         } else {
             self.parse_operation(signature, definition);
         }
+        self.globals.pop();
     }
 
     /// load all rules in node: variable definitions, actions, and definitions of operations and (in future) components
@@ -200,7 +202,8 @@ pub fn parse(filepath: &str) -> (Stack,Vec<Action>,Operations) {
     parser.set_language(&tree_sitter_vinx::LANGUAGE.into()).expect("error: could not load vinx grammar");
     let mut aut = Automaton::new();
     let operations = load_builtin_operations(&mut aut);
-    let (struct_count,builtin_structures) = load_builtin_structures(&mut aut);
+    let builtin_structures = load_builtin_structures(&mut aut);
+    let struct_count = builtin_structures.len();
     let mut it = Translator {
         parser,
         globals: Stack::new(),

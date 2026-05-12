@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Debug};
+use std::fmt::Debug;
 
 use crate::{context::Context, event::{builtins::Builtin, event::{Event, EventEffect}}, translator::{SequenceValue, StructureTemplate, sequence::Sequence}, variable::{Variable, Stack, Scope, VariableType, VariableValue}};
 
@@ -65,7 +65,7 @@ impl Operation {
                 SequenceValue::Operation(id) => {
                     operations[*id]
                         .instantiate(ps.clone(), context, operations, structures, stack)
-                        .process(context, stack, &mut HashMap::new(), operations)
+                        .process(context, stack, &mut vec![], operations)
                         .expect("error: did not have value")
                 }
                 SequenceValue::Structure(id) => {

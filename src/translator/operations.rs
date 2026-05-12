@@ -1,149 +1,67 @@
 use tree_sitter::Node;
 
-use crate::{context::Context, event::{Event, Operation}, translator::{SequenceValue, automata::Automaton, get_children, sequence::Sequence, translator::Kind, type_constraints::TypeConstraints}, variable::{Variable, VariableType, VariableValue}};
+use crate::{context::Context, event::{Event, Operation}, translator::{SequenceValue, automata::Automaton, get_children, sequence::Sequence, signature::Signature, translator::Kind, type_constraints::TypeConstraints}, variable::{Variable, VariableType, VariableValue}};
 
 use super::{translator::Translator, Word};
 
-// type Interperation = Vec<TypeConstraints>;
-pub struct OperationRepr {
-    pub signature: Sequence,
-    pub params: Vec<String>,
-    pub iterators: Vec<usize>,
-    pub structure_param_id: Option<usize>,
-}
-
-impl OperationRepr {
-    pub fn new( signature: Sequence, params: Vec<String>, iterators: Vec<usize>, structure_param_id: Option<usize>) -> Self {
-        Self { signature, params, iterators, structure_param_id }
-    }
-
-    // pub fn into_operation(self, id: usize, signature: Sequence, events: Vec<Event>, members: Vec<(String, SequenceValue,Vec<Variable>)>) -> Operation {
-    //     Operation::new(id, signature, self.params, events, self.iterators, members, self.structure_param_id)
-    // }
-}
+pub type MemberDef = (String, SequenceValue, Vec<Variable>);
 
 impl Translator {
     pub fn parse_operation(&mut self, signature_node: &Node, definition_node: &Node) {
-        let (signature, operands, iterators) = self.parse_lhs(signature_node);
-        self.handle_operation(definition_node, &operands, &signature, iterators);
-    }
-
-    /// parses left hand side and returns:
-    /// - its signature
-    /// - variable names
-    /// - iterators (only valid for operations)
-    pub fn parse_lhs(&self, lhs: &Node) -> (Sequence, Vec<String>, Vec<usize>) {
-        let mut seq = Sequence::new();
-        let mut operands = vec![];
-        let mut has_main_iterator = false;
-        let mut iterators: Vec<usize> = vec![];
-        for elem in get_children(lhs) {
-            match elem.kind() {
-                "keyword" => {
-                    seq.push(Word::Keyword(self.text(&elem).to_string()));
-                }
-                "variable" => {
-                    let name = self.get_variable_name(&elem).unwrap();  // variable always has a valid name
-                    push_variable_into_signature(name, &mut seq, &mut operands);
-                }
-                "iterator" => {
-                    let var_node = elem.child_by_field_name("variable").expect("error: iterator without variable field");
-                    var_node.expect_kind("variable", self);
-                    let name = self.get_variable_name(&var_node).unwrap();  // variable always has a valid name
-                    push_variable_into_signature(name, &mut seq, &mut operands);
-                    let var_id = operands.len()-1;
-                    if elem.child_by_field_name("main").is_some() {    // main iterator
-                        assert!(has_main_iterator == false);    // FIXME: nice error message / warning
-                        has_main_iterator = true;
-                        iterators.insert(0, var_id);
-                    } else {
-                        iterators.push(var_id);
-                    }
-                }
-                x => panic!("error: unexpected type {x} in sequence")
-            }
-        }
-        (seq, operands, iterators)
-    }
-
-    /// gets all possible interpretations of an event node
-    /// interpretation means: for a given sequence, what are the possible types for its ambiguous
-    /// variables
-    /// for efficiency, it returns whether at least one interpretation was found
-    pub fn get_event_interpretations(&self, event_node: &Node, interpretations: &mut Vec<Vec<TypeConstraints>>) -> bool {
-        let seq = self.get_sequence(event_node);
-        // TODO: change so that it can also update static variables
-        let ints = self.action_decision_automaton.get_interpretations(seq.get(), None, &self.operations);
-
-        if ints.is_empty() {
-            return false;
-        }
-        interpretations.push(ints);
-        true
+        let signature = self.parse_signature(signature_node);
+        let (variables,interpretations) = self.parse_operation_definition(definition_node, &signature.sequence, None);
+        if interpretations.is_empty() { println!("nothing for {signature}"); return }    // TODO: warning
+        self.operation_member_assert(&variables, &signature.params);
+        self.infer_datatypes_from_interpretations(&interpretations, &signature, definition_node, &variables);
     }
 
     /// insert new operation in self.operations
-    fn create_typed_operation(&mut self, signature: &Sequence, operands: &Vec<String>, types: &Vec<VariableType>, events_node: &Node, iterators: &Vec<usize>, member_names: &Vec<String>) -> bool {
-        // swap signature
-        let mut new_signature = vec![];
-        for w in signature.get() {
-            if let Word::Type(VariableType::Any(var_id)) = w {
-                let v = &types[*var_id];
-                if iterators.contains(var_id) {
-                    new_signature.push(Word::Type(VariableType::Vec(Box::new(v.clone()))));
-                } else {
-                    new_signature.push(Word::Type(v.clone()));
-                }
-                let var_name;
-                if operands.len() > *var_id {
-                    var_name = &operands[*var_id];
-                } else if operands.len()+member_names.len() > *var_id {
-                    var_name = &member_names[*var_id-operands.len()];
-                } else {
-                    panic!("error: got variable id {var_id} with operands {operands:?} and members {member_names:?}");
-                }
-                self.globals.update_variable(var_name, v.default());
-            } else {
-                new_signature.push(w.clone());
-            }
-        }
-        // swap event signatures and create events
-        let mut op_events = vec![];
-        let mut members = vec![];
-        for event in get_children(events_node) {
-            if event.kind() == "var_definition" {
-                let name = self.get_var_definition_name(&event).to_string();
-                let (seq,params) = self.get_sequence_with_params(&event.child_by_field_name("rhs").unwrap());
-                let sv = self.action_decision_automaton.run(seq.get()).expect("error: unknown sequence");
-                match sv {
-                    SequenceValue::Operation(id) => {
-                        match self.operations[id].get_return_type() {
-                            Some(ret) => self.globals.update_variable(&name, ret.default()),
-                            None => panic!("error: operation {seq} does not return anything"),
-                        }
-                    }
-                    SequenceValue::Structure(id) => {
-                        self.globals.update_variable(&name, VariableType::Structure(id).default());
-                    }
-                    SequenceValue::Value(ref t) => {
-                        self.globals.update_variable(&name, t.default());
-                    }
-                }
-                members.push((name,sv.clone(),params));
-            } else {
-                op_events.push(self.get_event(&event));
-            }
-        }
-        self.add_operation(Sequence::from(new_signature), operands.clone(), op_events, iterators, members, None)
+    fn create_typed_operation(&mut self, signature: &Signature, types: &Vec<VariableType>, events_node: &Node) -> bool {
+        let mut new_signature = signature.clone();
+        new_signature.swap_types(types);
+        self.update_stack_with_signature(&new_signature);
+        let (op_events,members) = self.get_operation_definition(events_node, None);
+        self.add_operation(new_signature, op_events, members)
     }
 
-    pub fn add_operation(&mut self, signature: Sequence, operands: Vec<String>, events: Vec<Event>, iterators: &Vec<usize>, members: Vec<(String,SequenceValue,Vec<Variable>)>, str_id: Option<usize>) -> bool {
-        let op_id = self.operations.len();
-        // println!("adding operation '{}' => {op_id}", signature);
-        if !self.action_decision_automaton.register(signature.clone(), SequenceValue::Operation(op_id)) {
-            return false
+    pub fn get_operation_definition(&mut self, definition_node: &Node, structure: Option<usize>) -> (Vec<Event>,Vec<MemberDef>) {
+        let mut events = vec![];
+        let mut members = vec![];
+        for stmt in get_children(definition_node) {
+            if stmt.kind() == "var_definition" {
+                members.push(self.get_member(&stmt));
+            } else {
+                let mut event = self.get_event(&stmt);
+                if let Some(structure_id) = structure {
+                    let op = &self.operations[event.get_id()];
+                    if let Some(struct_id) = op.method_of() {
+                        if *struct_id == structure_id {
+                            event.deactivate_struct();
+                        }
+                    }
+                }
+                events.push(event);
+            }
         }
-        self.operations.push(Operation::new(op_id, signature, operands, events, iterators.clone(), members, str_id, None));
+        (events,members)
+    }
+
+    pub fn get_member(&mut self, stmt: &Node) -> MemberDef {
+        stmt.expect_kind("var_definition", self);
+        let name = self.get_var_definition_name(&stmt).to_string();
+        let (seq,params) = self.get_sequence_with_params(&stmt.child_by_field_name("rhs").unwrap());
+        let sv = self.action_decision_automaton.run(seq.get()).expect("error: unknown sequence");
+        self.globals.update_variable(&name, sv.into_variable_type(&self.operations).default());
+        (name,sv.clone(),params)
+    }
+
+    pub fn add_operation(&mut self, signature: Signature, events: Vec<Event>, members: Vec<(String,SequenceValue,Vec<Variable>)>) -> bool {
+        let op_id = self.operations.len();
+        // println!("adding operation '{signature}' => {op_id} ({})", signature.sequence);
+        if !self.action_decision_automaton.register(signature.sequence.clone(), SequenceValue::Operation(op_id)) {
+            return false // TODO: generate warning
+        }
+        self.operations.push(Operation::new(op_id, signature.sequence, signature.params, events, signature.iterators, members, signature.structure_param_id, None));
         true
     }
 
@@ -176,20 +94,20 @@ impl Translator {
         }
     }
 
-    pub fn infer_datatypes_from_interpretations(&mut self, interpretations: &Vec<Vec<TypeConstraints>>, signature: &Sequence, operands: &Vec<String>, events_node: &Node, iterators: &Vec<usize>, variables: &Vec<String>) {
+    pub fn infer_datatypes_from_interpretations(&mut self, interpretations: &Vec<Vec<TypeConstraints>>, signature: &Signature, events_node: &Node, variables: &Vec<String>) {
         if interpretations.len() == 0 { return; }
-        self.infer_datatypes_from_interpretations_rec(&TypeConstraints::new(), &interpretations, signature, operands, events_node, iterators, variables);
-        self.resolve_variables(operands.len()+variables.len());
+        self.infer_datatypes_from_interpretations_rec(&TypeConstraints::new(), &interpretations, signature, events_node, variables);
+        self.resolve_variables(signature.params.len()+variables.len());
     }
 
-    fn infer_datatypes_from_interpretations_rec(&mut self, interpretation: &TypeConstraints, rest: &[Vec<TypeConstraints>], signature: &Sequence, operands: &Vec<String>, events_node: &Node, iterators: &Vec<usize>, variables: &Vec<String>) {
+    fn infer_datatypes_from_interpretations_rec(&mut self, interpretation: &TypeConstraints, rest: &[Vec<TypeConstraints>], signature: &Signature, events_node: &Node, variables: &Vec<String>) {
         if rest.is_empty() { 
-            self.create_typed_operation(signature, operands, interpretation.get_types(), events_node, iterators, variables);
+            self.create_typed_operation(signature, interpretation.get_types(), events_node);
             return; 
         }
         for int in &rest[0] {
             if let Some(prod) = interpretation.clone().intersect(int.clone()) {
-                self.infer_datatypes_from_interpretations_rec(&prod, &rest[1..], signature, operands, events_node, iterators, variables);
+                self.infer_datatypes_from_interpretations_rec(&prod, &rest[1..], signature, events_node, variables);
             }
         }
     }
@@ -201,11 +119,7 @@ impl Translator {
             let mut ints;
             match e.kind() {
                 "var_definition" => {
-                    let var_id = self.new_unresolved_variable();
-                    let name = self.get_var_definition_name(&e).to_string();
-                    member_names.push(name.to_string());
-                    self.globals.add_variable(name.clone(), VariableValue::Any(var_id));
-                    let seq = self.get_sequence(&e.child_by_field_name("rhs").unwrap());
+                    let (var_id,seq) = self.add_member(&e, &mut member_names);
                     ints = self.action_decision_automaton.get_interpretations(seq.get(), Some(var_id), &self.operations);
                     if ints.len() == 0 && let Some(aut) = aut {
                         ints = aut.get_interpretations(seq.get(), Some(var_id), &self.operations);
@@ -226,26 +140,20 @@ impl Translator {
         (member_names,interpretations)
     }
 
+    pub fn add_member(&mut self, node: &Node, member_names: &mut Vec<String>) -> (usize,Sequence) {
+        node.expect_kind("var_definition", self);
+        let var_id = self.new_unresolved_variable();
+        let name = self.get_var_definition_name(&node).to_string();
+        member_names.push(name.to_string());
+        self.globals.add_variable(name.clone(), VariableValue::Any(var_id));
+        let seq = self.get_sequence(&node.child_by_field_name("rhs").unwrap());
+        (var_id,seq)
+    }
+
     fn operation_member_assert(&self, variables: &Vec<String>, operands: &Vec<String>) -> bool {
         for n in variables {
             assert!(!operands.contains(&n));  // TODO: user friendlify
         }
         true
     }
-
-    fn handle_operation(&mut self, definition_node: &Node, operands: &Vec<String>, signature: &Sequence, iterators: Vec<usize>) {
-        self.globals.push();
-        self.push_signature_params_to_scope(operands);
-        let (variables,interpretations) = self.parse_operation_definition(definition_node, signature, None);
-        if interpretations.is_empty() { println!("nothing for {signature}"); return }    // TODO: warning
-        self.operation_member_assert(&variables, operands);
-        self.infer_datatypes_from_interpretations(&interpretations, signature, operands, definition_node, &iterators, &variables);
-        self.globals.pop();
-    }
 }
-
-fn push_variable_into_signature(var_name: &str, seq: &mut Sequence, operands: &mut Vec<String>) {
-    seq.push(Word::Type(VariableType::Any(operands.len())));
-    operands.push(var_name.to_string());
-}
-

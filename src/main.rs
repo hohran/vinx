@@ -46,5 +46,9 @@ fn main() {
     let Some(program_path) = args.program_path else {
         panic!("")
     };
-    vinx::run(video_path, program_path, args.output_path.unwrap_or("out.mp4".to_string()));
+    vinx::run(
+        video_path,
+        program_path,
+        args.output_path.unwrap_or("out.mp4".to_string()),
+    );
 }

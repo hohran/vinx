@@ -31,6 +31,7 @@ macro_rules! builtins {
     };
 }
 
+/// Generate all builtin operations, note them in the automaton `aut` and return them.
 pub fn load_builtin_operations(aut: &mut Automaton) -> Vec<Operation> {
     let builtins: &[(Sequence, Option<VariableType>, Builtin)] = &builtins!(
         ("restricted" "move" Pos Direction "by" Int), move_pos;
@@ -68,12 +69,12 @@ pub fn load_builtin_operations(aut: &mut Automaton) -> Vec<Operation> {
     ops
 }
 
-pub fn load_builtin_structures(aut: &mut Automaton) -> (usize,Vec<StructureTemplate>) {
+/// Generate all builtin structures, note them in the automaton `aut` and return them.
+pub fn load_builtin_structures(aut: &mut Automaton) -> Vec<StructureTemplate> {
     let builtins = [
         // rectangle
         seq!("rectangle" "from" Pos "to" Pos),
     ];
-    let num_of_builtins = builtins.len();
     let mut structures = vec![];
     for (i,seq) in builtins.into_iter().enumerate() {
         let types = seq.get_types();
@@ -84,5 +85,5 @@ pub fn load_builtin_structures(aut: &mut Automaton) -> (usize,Vec<StructureTempl
         let param_types = types.into_iter().map(|v| v.clone()).collect();
         structures.push(StructureTemplate::new(i, param_names, param_types, vec![]));
     }
-    (num_of_builtins,structures)
+    structures
 }

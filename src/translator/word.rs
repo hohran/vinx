@@ -1,5 +1,10 @@
+use std::fmt::Display;
+
 use crate::variable::VariableType;
 
+/// Word represents a single word in signatures of functions.
+/// For example `move Pos by Pos` contains 4 words, where `Type` is denoted with capital letters.
+/// Words can be conveniently generated with the `word!` macro.
 #[derive(Clone,Hash,Eq,PartialEq,Debug)]
 pub enum Word {
     Keyword(String),
@@ -41,15 +46,18 @@ impl Word {
     }
 }
 
-impl ToString for Word {
-    fn to_string(&self) -> String {
+impl Display for Word {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Word::Keyword(k) => { k.clone() }
-            Word::Type(t) => { t.to_string() }
+            Word::Keyword(k) => { write!(f, "{k}") }
+            Word::Type(t) => { write!(f, "{t}") }
         }
     }
 }
 
+/// Generate words based on the convention:
+///  * keywords are lowercase or wrapped with double quotes (necessery for keywords, such as move)
+///  * types are corresponding to options in `VariableType`, case-sensitive
 #[macro_export]
 macro_rules! word {
     ( [ $($x:tt)+ ] ) => { Word::Type(VariableType::Vec(Box::new(vtype!($($x)+)))) };

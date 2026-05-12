@@ -1,0 +1,16 @@
+$color rect from $p1 to $p2 = {
+  $r = rectangle from $p1 to $p2;
+  draw $self = draw $color $r;
+  move $self by $p = move $r by $p;
+}
+
+$r1 = red rect from (10,10) to (20,20);
+$r2 = blue rect from (80,80) to (210,210);
+
+every frame draw $r1;
+every frame draw $r2;
+
+$t = 10;
+
+every $t frames move $r1 by (10,10);
+every $t frames move $r2 by (10,10);

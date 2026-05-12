@@ -1,16 +1,16 @@
-use std::collections::HashMap;
+use crate::action::ActionHandle;
 use crate::context::Context;
 use crate::variable::Variable;
 use crate::variable::{Stack, Direction, VariableValue};
 use crate::video::Drawable;
 
-pub type Builtin = fn(&mut Context, &mut Stack, &mut Vec<Variable>, &mut HashMap<String,bool>) -> Option<VariableValue>;
+pub type Builtin = fn(&mut Context, &mut Stack, &mut Vec<Variable>, &mut Vec<ActionHandle>) -> Option<VariableValue>;
 
 pub fn expect_param_count(operation_name: &str, params: &Vec<Variable>, expected: usize) {
     assert_eq!(params.len(), expected, "error: function {operation_name} expected {expected} parameters, got {}", params.len());
 }
 
-pub fn print(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_activeness: &mut HashMap<String,bool>) -> Option<VariableValue> {
+pub fn print(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
     expect_param_count("print", params, 1);
     let par1 = params[0].get_value(stack);
     let s = par1.into_string();
@@ -18,42 +18,34 @@ pub fn print(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variabl
     None
 }
 
-pub fn activate(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, action_activeness: &mut HashMap<String,bool>) -> Option<VariableValue> {
-    set_activeness(stack, params, action_activeness, true)
-}
-
-pub fn deactivate(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, action_activeness: &mut HashMap<String,bool>) -> Option<VariableValue> {
-    set_activeness(stack, params, action_activeness, false)
-}
-
-fn set_activeness(stack: &mut Stack, params: &mut Vec<Variable>, action_activeness: &mut HashMap<String,bool>, val: bool) -> Option<VariableValue> {
-    let op_name = if val {"activate"} else {"deactivate"};
+pub fn activate(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
+    let op_name = "activate";
     expect_param_count(op_name, params, 1);
-    // get values
     let par1 = params[0].get_value(stack);
     let label = par1.into_string();
-    // perform operation
-    let a = action_activeness.get_mut(label);
-    let Some(ac) = a else {
-        panic!("error: {op_name}: could not find action named {label}");
-    };
-    *ac = val;
+    action_handles.push(ActionHandle::Enable(label.to_string()));
     None
 }
 
-pub fn toggle_activeness(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, action_activeness: &mut HashMap<String,bool>) -> Option<VariableValue> {
+pub fn deactivate(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
+    let op_name = "deactivate";
+    expect_param_count(op_name, params, 1);
+    let par1 = params[0].get_value(stack);
+    let label = par1.into_string();
+    action_handles.push(ActionHandle::Disable(label.to_string()));
+    None
+}
+
+pub fn toggle_activeness(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
     let op_name = "toggle";
     expect_param_count(op_name, params, 1);
-    let par = &params[0].get_value(stack);
-    let label = par.into_string();
-    let Some(ac) = action_activeness.get_mut(label) else {
-        panic!("error: {op_name}: could not find action named {label}");
-    };
-    *ac = !*ac;
+    let par1 = params[0].get_value(stack);
+    let label = par1.into_string();
+    action_handles.push(ActionHandle::Toggle(label.to_string()));
     None
 }
 
-pub fn add_to(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_activeness: &mut HashMap<String,bool>) -> Option<VariableValue> {
+pub fn add_to(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
     expect_param_count("add", params, 2);
     let v1 = &params[0].get_value(stack);
     let v2 = &params[1].get_value(stack);
@@ -64,7 +56,7 @@ pub fn add_to(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variab
     None
 }
 
-pub fn sub(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_activeness: &mut HashMap<String,bool>) -> Option<VariableValue> {
+pub fn sub(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
     expect_param_count("sub", params, 2);
     let v1 = &params[0].get_value(stack);
     let v2 = &params[1].get_value(stack);
@@ -75,7 +67,7 @@ pub fn sub(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>
     None
 }
 
-pub fn set(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_activeness: &mut HashMap<String,bool>) -> Option<VariableValue> {
+pub fn set(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
     expect_param_count("set", params, 2);
     let v2 = &params[1];
     let new_val = v2.get_value(stack).clone();
@@ -84,7 +76,7 @@ pub fn set(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>
     None
 }
 
-pub fn top_into(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_activeness: &mut HashMap<String,bool>) -> Option<VariableValue> {
+pub fn top_into(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
     expect_param_count("top into", params, 2);
     let par1 = &params[0].get_value(stack);
     let v = par1.into_vec();
@@ -94,7 +86,7 @@ pub fn top_into(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Vari
     None
 }
 
-pub fn rotate_vec(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_activeness: &mut HashMap<String,bool>) -> Option<VariableValue> {
+pub fn rotate_vec(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
     expect_param_count("rotate", params, 3);
     let par1 = params[0].get_value(stack);
     let par2 = params[1].get_value(stack);
@@ -125,14 +117,14 @@ pub fn rotate_vec(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Va
     None
 }
 
-pub fn get_frame(context: &mut Context, _stack: &mut Stack, _params: &mut Vec<Variable>, _action_activeness: &mut HashMap<String,bool>) -> Option<VariableValue> {
+pub fn get_frame(context: &mut Context, _stack: &mut Stack, _params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
     println!("here");
     if context.is_empty() { return None; }
     let frame = context.get_frame();
     Some(VariableValue::Image(frame.clone()))
 }
 
-pub fn draw_rect(context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_activeness: &mut HashMap<String,bool>) -> Option<VariableValue> {
+pub fn draw_rect(context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
     expect_param_count("draw rectangle", params, 3);
     if context.is_empty() { return None; }
     let par1 = &params[0].get_value(stack);
@@ -146,7 +138,7 @@ pub fn draw_rect(context: &mut Context, stack: &mut Stack, params: &mut Vec<Vari
     None
 }
 
-pub fn draw_effect_rect(context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_activeness: &mut HashMap<String,bool>) -> Option<VariableValue> {
+pub fn draw_effect_rect(context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
     expect_param_count("draw rectangle (effect)", params, 3);
     if context.is_empty() { return None; }
     let par1 = &params[0].get_value(stack);
@@ -160,7 +152,7 @@ pub fn draw_effect_rect(context: &mut Context, stack: &mut Stack, params: &mut V
     None
 }
 
-pub fn draw_rect_outline(context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_activeness: &mut HashMap<String,bool>) -> Option<VariableValue> {
+pub fn draw_rect_outline(context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
     expect_param_count("draw rectangle", params, 3);
     if context.is_empty() { return None; }
     let par1 = &params[0].get_value(stack);
@@ -174,7 +166,7 @@ pub fn draw_rect_outline(context: &mut Context, stack: &mut Stack, params: &mut 
     None
 }
 
-pub fn move_pos_phase(context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_activeness: &mut HashMap<String,bool>) -> Option<VariableValue> {
+pub fn move_pos_phase(context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
     expect_param_count("move", params, 3);
     if context.is_empty() { return None; } // TODO: what to do with wrapping in preprocessing?
     let par1 = &params[0].get_value(stack);
@@ -203,7 +195,7 @@ pub fn move_pos_phase(context: &mut Context, stack: &mut Stack, params: &mut Vec
     None
 }
 
-pub fn move_pos(context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_activeness: &mut HashMap<String,bool>) -> Option<VariableValue> {
+pub fn move_pos(context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
     expect_param_count("restricted move", params, 3);
     if context.is_empty() { return None; }
     let par1 = &params[0].get_value(stack);
@@ -228,7 +220,7 @@ pub fn move_pos(context: &mut Context, stack: &mut Stack, params: &mut Vec<Varia
     None
 }
 
-pub fn move_by(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_activeness: &mut HashMap<String,bool>) -> Option<VariableValue> {
+pub fn move_by(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
     expect_param_count("move by", params, 2);
     let par1 = &params[0].get_value(stack);
     let par2 = &params[1].get_value(stack);
@@ -245,7 +237,7 @@ pub mod image {
     use super::*;
     use ::image;
 
-    pub fn draw_at(context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_activeness: &mut HashMap<String,bool>) -> Option<VariableValue> {
+    pub fn draw_at(context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
         expect_param_count("draw image at", params, 2);
         if context.is_empty() { return None; }
         let par1 = params[0].get_value(stack);
@@ -257,7 +249,7 @@ pub mod image {
         None
     }
 
-    pub fn draw_into(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_activeness: &mut HashMap<String,bool>) -> Option<VariableValue> {
+    pub fn draw_into(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
         expect_param_count("draw into image", params, 3);
         let par1 = params[0].get_value(stack);
         let color = par1.into_color();
@@ -271,7 +263,7 @@ pub mod image {
         None
     }
 
-    pub fn save_as(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_activeness: &mut HashMap<String,bool>) -> Option<VariableValue> {
+    pub fn save_as(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
         expect_param_count("save image as", params, 2);
         let par1 = params[0].get_value(stack);
         let par2 = &params[1].get_value(stack);
@@ -283,7 +275,7 @@ pub mod image {
         None
     }
 
-    pub fn load_from(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_activeness: &mut HashMap<String,bool>) -> Option<VariableValue> {
+    pub fn load_from(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
         expect_param_count("load image", params, 1);
         let par1 = &params[0].get_value(stack);
         let name = par1.into_string();
@@ -293,7 +285,7 @@ pub mod image {
         }
     }
 
-    pub fn colored(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_activeness: &mut HashMap<String,bool>) -> Option<VariableValue> {
+    pub fn colored(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
         expect_param_count("colored image", params, 3);
         let par1 = &params[0].get_value(stack);
         let par2 = &params[1].get_value(stack);
@@ -318,7 +310,7 @@ pub mod image {
 pub mod rectangle {
     use super::*;
 
-    pub fn draw(context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_activeness: &mut HashMap<String,bool>) -> Option<VariableValue> {
+    pub fn draw(context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
         expect_param_count("draw struct rectangle", params, 2);
         if context.is_empty() { return None; }
         let par1 = &params[0].get_value(stack);
@@ -332,7 +324,7 @@ pub mod rectangle {
         None
     }
 
-    pub fn expand(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_activeness: &mut HashMap<String,bool>) -> Option<VariableValue> {
+    pub fn expand(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
         expect_param_count("expand struct rectangle", params, 2);
         let par2 = &params[1].get_value(stack);
         let step = par2.into_int();
@@ -347,7 +339,7 @@ pub mod rectangle {
         None
     }
 
-    pub fn move_by(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_activeness: &mut HashMap<String,bool>) -> Option<VariableValue> {
+    pub fn move_by(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
         expect_param_count("move struct rectangle", params, 2);
         let par2 = &params[1].get_value(stack);
         let (x,y) = par2.into_pos();

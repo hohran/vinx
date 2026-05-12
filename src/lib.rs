@@ -1,9 +1,7 @@
-use std::collections::HashMap;
-
 use context::Context;
 use translator::parse;
 
-use crate::video::Video;
+use crate::{action::{ActionHandle, process_action_handles}, video::Video};
 
 pub mod action;
 pub mod event;
@@ -12,32 +10,22 @@ pub mod video;
 pub mod translator;
 pub mod variable;
 
-fn get_action_activeness(actions: &Vec<action::Action>) -> HashMap<String,bool> {
-    let mut action_activeness: HashMap<String,bool> = HashMap::new();
-    for a in actions {
-        if action_activeness.insert(a.get_name().to_string(), a.default_activeness()).is_some() {
-            if !a.get_name().is_empty() {
-                panic!("multiple occurences of action name {}",a.get_name());
-            }
-        }
-    }
-    action_activeness
-}
-
 pub fn run(media_file: String, command_file: String, output_path: String) {
-    let (mut globals, mut actions, operations) = parse(&command_file);
-    let mut action_activeness = get_action_activeness(&actions);
+    let (mut stack, mut actions, operations) = parse(&command_file);
+    // let mut action_activeness = get_action_activeness(&actions);
+    let mut action_handles: Vec<ActionHandle> = vec![];
     let video = Video::from_file(media_file, "ffmpeg").expect("could not read video file");
     let mut context = Context::from(video);
     // run the main loop
     for _ in 1..context.get_video_length()+1 {
         context.step();
-        for a in actions.iter_mut() {
-            if !a.is_active(&action_activeness) {
-                continue;
-            }
-            a.step(1);     // TODO derive millis from framerate
-            a.trigger(&mut context, &mut globals, &mut action_activeness, &operations);
+        for i in 0..actions.len() {
+            let a = &mut actions[i];
+            a.step();
+            a.trigger(&mut context, &mut stack, &operations, &mut action_handles);
+            process_action_handles(&mut action_handles, &mut actions); // TODO: this has to be
+                                                                       // changed if action_handle
+                                                                       // could reorder actions
         }
     }
     let video = context.get_video();

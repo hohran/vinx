@@ -3,7 +3,7 @@ use std::process::exit;
 use colorized::Color;
 use tree_sitter::Node;
 
-use crate::{action::{Action, Timestamp}, context::Context, event::Event, translator::{SequenceValue, Word, get_all_children, get_children, sequence::Sequence, translator::{Kind, Translator}}, variable::{Variable}};
+use crate::{action::{Action, TimeUnit, Trigger}, context::Context, event::Event, translator::{SequenceValue, Word, get_all_children, get_children, sequence::Sequence, translator::{Kind, Translator}}, variable::Variable};
 
 impl Translator {
     pub fn get_action_definition(&mut self, node: &Node) {
@@ -14,22 +14,26 @@ impl Translator {
         } else {
             String::new()
         };
-        let (active,onetime,timestamp,acc) = self.get_action_trigger(&children[0]);
+        let trigger = self.get_action_trigger(&children[0]);
         let events = self.get_action_events(&children[1]);
-        if !active && label.is_empty() {
+        if !trigger.is_enabled() && label.is_empty() {
             return;     // This action does not have to be processed, since there is no way to activate it
         }
-        let a = Action::new(label, active, timestamp, acc, events, onetime);
+        let a = Action::new(&label, events, trigger);
         self.actions.push(a);
     }
 
-    fn get_action_trigger(&self, node: &Node) -> (bool, bool, Timestamp, Timestamp) {
+    fn get_action_trigger(&self, node: &Node) -> Trigger {
         let mut i = 0;
         let children = get_all_children(node);  // need to keep the ! symbol
         let active = self.get_action_active(&children[i], &mut i);
         let onetime = !self.get_action_repeats(&children[i], &mut i);
-        let (timestamp,acc) = self.get_action_timestamp_and_acc(&children, &mut i);
-        (active,onetime,timestamp,acc)
+        let (t,unit) = self.get_action_trigger_time(&children, &mut i);
+        let mut t = Trigger::new(t, unit, onetime);
+        if !active {
+            t.disable();
+        }
+        t
     }
 
     fn get_action_events(&mut self, node: &Node) -> Vec<Event> {
@@ -93,18 +97,30 @@ impl Translator {
         self.text(node) == "every"
     }
 
-    fn get_action_timestamp_and_acc(&self, children: &[Node], i: &mut usize) -> (Timestamp, Timestamp) {
-        let q_node = children[*i];
-        let quantifier = if q_node.kind() == "number" { *i += 1; self.node_to_int(&q_node) } else { 1 };
-        if quantifier < 0 {
-            panic!("error: negative number in trigger");
-        }
-        let quantifier = quantifier as usize;
-        match self.text(&children[*i]) {
-            "frame" | "frames" => (Timestamp::Frame(quantifier),Timestamp::Frame(0)),
-            "s" | "second" | "seconds" => (Timestamp::Millis(quantifier*1000),Timestamp::Millis(0)),
-            "ms" | "millisecond" | "milliseconds" => (Timestamp::Millis(quantifier),Timestamp::Millis(0)),
+    fn get_action_trigger_time(&self, children: &[Node], i: &mut usize) -> (Variable, TimeUnit) {
+        let node = children[*i];
+        let trigger_time = match node.kind() {
+            "number" => {
+                *i += 1;
+                let val = self.node_to_int(&node);
+                if val < 0 {
+                    panic!("error: negative trigger time {val}");
+                }
+                Variable::new_static(crate::variable::VariableValue::Int(val))
+            },
+            "variable" => {
+                *i += 1;
+                let name = self.text(&node);
+                Variable::new(name, crate::variable::VariableType::Int)
+            },
+            _ => Variable::new_static(crate::variable::VariableValue::Int(1)),
+        };
+        let unit = match self.text(&children[*i]) {
+            "frame" | "frames" => TimeUnit::Frame,
+            "s" | "second" | "seconds" => panic!("error: seconds not implemented as a unit time"),
+            "ms" | "millisecond" | "milliseconds" => panic!("error: seconds not implemented as a unit time"),
             _ => panic!("unexpected time unit {}", self.text(&children[*i]))
-        }
+        };
+        return (trigger_time, unit)
     }
 }

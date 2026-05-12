@@ -1,3 +1,4 @@
+// TODO refactor
 extern crate tree_sitter;
 extern crate tree_sitter_vinx;
 
@@ -6,7 +7,8 @@ mod type_constraints;
 mod translator;
 pub mod word;
 pub use word::Word;
-use std::collections::HashMap;
+mod signature;
+pub use signature::Signature;
 
 pub use translator::parse;
 use tree_sitter::Node;
@@ -42,16 +44,16 @@ impl StructureTemplate {
         stack.push();
         let mut members = Scope::new();
         for i in 0..params.len() {
-            assert!(params[i].get_type() == self.param_types[i]);
+            assert!(params[i].get_type().is_assignable_to(&self.param_types[i]));
             members.insert(self.param_names[i].clone(), params[i].get_value(stack).clone());
-            stack.add_variable(self.param_names[i].clone(), params[i].get_value(stack).clone());
+            stack.add_variable(self.param_names[i].clone(), params[i].get_value(stack).clone()); // TODO: we should cast it to the expected param type (self.params[i])
         }
         for (name,val,ps) in &self.members {
             let member_val = match val {
                 SequenceValue::Operation(id) => {
                     operations[*id]
                         .instantiate(ps.clone(), context, operations, structures, stack)
-                        .process(context, stack, &mut HashMap::new(), operations) // TODO: fix hashmap for action activeness
+                        .process(context, stack, &mut vec![], operations) // TODO: fix hashmap for action activeness
                         .expect("error: did not have value")
                 }
                 SequenceValue::Structure(id) => {
@@ -82,11 +84,13 @@ fn get_all_children<'a>(node: &Node<'a>) -> Vec<Node<'a>> {
     node.children(&mut node.walk()).filter(|n| n.kind() != "comment").collect()
 }
 
+pub type OperationId = usize;
+pub type StructureId = usize;
 
 #[derive(Clone,Eq,PartialEq,Debug)]
 pub enum SequenceValue {
-    Operation(usize),
-    Structure(usize),
+    Operation(OperationId),
+    Structure(StructureId),
     Value(VariableType),
 }
 

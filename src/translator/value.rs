@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use image::Rgb;
 use tree_sitter::Node;
 
@@ -50,13 +48,12 @@ impl Translator {
         }
     }
 
-
     pub fn get_sequence_value(&mut self, node: &Node) -> VariableValue {
         node.expect_kind("sequence", self);
         let children = get_children(node);
-        if children.len() == 1 {
-            return self.get_atomic_value(&children[0]);
-        }
+        // if children.len() == 1 {
+        //     return self.get_atomic_value(&children[0]);
+        // }
         let mut seq = Sequence::new();
         let mut params = vec![];
         for n in children {
@@ -86,10 +83,14 @@ impl Translator {
                 let mut context = Context::empty();
                 self.operations[id]
                     .instantiate(params, &mut context, &self.operations, &self.structures, &mut self.globals)
-                    .process(&mut Context::empty(), &mut self.globals, &mut HashMap::new(), &self.operations)
+                    .process(&mut Context::empty(), &mut self.globals, &mut vec![], &self.operations)
                     .expect("error: did not have value")
             }
-            _ => panic!("error: unexpected sequence value {:?}", sv)
+            SequenceValue::Value(_) => {
+                assert!(params.len() == 1);
+                params[0].get_value(&self.globals).clone()
+            }
+            // _ => panic!("error: unexpected sequence value {:?}", sv)
         }
     }
 

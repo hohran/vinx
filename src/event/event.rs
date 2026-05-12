@@ -1,6 +1,6 @@
-use std::{collections::HashMap, fmt::Debug};
+use std::fmt::Debug;
 
-use crate::{context::Context, event::{Operations, builtins::Builtin, operation::Operation}, variable::{Variable, Stack, Scope, VariableValue}};
+use crate::{action::ActionHandle, context::Context, event::{Operations, builtins::Builtin, operation::Operation}, variable::{Scope, Stack, Variable, VariableValue}};
 
 #[derive(Debug,Clone)]
 pub enum EventEffect {
@@ -30,14 +30,14 @@ impl Event {
         self.active_struct = false;
     }
 
-    pub fn process(&mut self, context: &mut Context, stack: &mut Stack, action_activeness: &mut HashMap<String,bool>, operations: &Operations) -> Option<VariableValue> {
+    pub fn process(&mut self, context: &mut Context, stack: &mut Stack, action_handles: &mut Vec<ActionHandle>, operations: &Operations) -> Option<VariableValue> {
         match &self.effect {
-            EventEffect::Builtin(f) => f(context, stack, &mut self.params, action_activeness),
-            EventEffect::Composed(_) => self.process_composed(context, stack, action_activeness, operations),
+            EventEffect::Builtin(f) => f(context, stack, &mut self.params, action_handles),
+            EventEffect::Composed(_) => self.process_composed(context, stack, operations, action_handles),
         }
     }
 
-    fn process_composed(&mut self, context: &mut Context, stack: &mut Stack, action_activeness: &mut HashMap<String,bool>, operations: &Operations) -> Option<VariableValue> {
+    fn process_composed(&mut self, context: &mut Context, stack: &mut Stack, operations: &Operations, action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
         let op = &operations[self.id];
         let iterators = op.get_iterators();
         let operands = op.get_operands();
@@ -49,7 +49,7 @@ impl Event {
         let mut result = None;
         for it in 0..iterations {
             self.push_iterated_values(stack, &iterated_params, op, it);
-            result = self.run_events(stack, context, action_activeness, operations);
+            result = self.run_events(stack, context, action_handles, operations);
             self.fetch_iterated_values(stack, &iterated_params, operands, it);
         }
         stack.pop();
@@ -120,7 +120,7 @@ impl Event {
             return;
         }
         if let Some(param_id) = op.structure_param_id {
-            // stack.pretty_println("== structure layer ==".to_string());
+            // FIXME: vec of structures is not allowed
             let VariableValue::Structure(s) = self.params[param_id].get_value(stack) else {
                 panic!();
             };
@@ -151,13 +151,13 @@ impl Event {
         }
     }
 
-    fn run_events(&mut self, stack: &mut Stack, context: &mut Context, action_activeness: &mut HashMap<String,bool>, operations: &Operations) -> Option<VariableValue> {
+    fn run_events(&mut self, stack: &mut Stack, context: &mut Context, action_handles: &mut Vec<ActionHandle>, operations: &Operations) -> Option<VariableValue> {
         let mut result = None;
         let EventEffect::Composed(events) = &mut self.effect else {
             panic!("error: expected composed event");
         };
         for e in events {
-            result = e.process(context, stack, action_activeness, operations);
+            result = e.process(context, stack, action_handles, operations);
         }
         result
     }
