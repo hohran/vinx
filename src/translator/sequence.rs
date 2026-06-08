@@ -1,6 +1,56 @@
 use std::fmt::Display;
 
-use crate::{translator::Word, variable::VariableType};
+use tree_sitter::Node;
+
+use super::{Word, get_children, StructureTemplate, Translator};
+use crate::{context::Context, event::Operations, variable::{Stack, Variable, VariableType, VariableValue}};
+
+pub type OperationId = usize;
+pub type StructureId = usize;
+
+// TODO: refactor
+#[derive(Clone,Eq,PartialEq,Debug)]
+pub enum SequenceValue {
+    Operation(OperationId),
+    Structure(StructureId),
+    Value(VariableType),
+}
+
+impl SequenceValue {
+    pub fn into_type(&self, operations: &Operations) -> VariableType {
+        match self {
+            SequenceValue::Operation(f_id) => {
+                let op = &operations[*f_id];
+                let Some(ret) = op.get_return_type() else {
+                    panic!("no return type for: {}", op.get_signature());
+                };
+                ret.clone()
+            }
+            SequenceValue::Structure(s) => VariableType::Structure(*s),
+            SequenceValue::Value(t) => t.clone()
+        }
+    }
+
+    pub fn into_value(self, params: Vec<Variable>, operations: &Operations, structures: &Vec<StructureTemplate>, stack: &mut Stack) -> VariableValue {
+        match self {
+            SequenceValue::Structure(id) => {
+                let mut context = Context::empty();
+                VariableValue::Structure(structures[id].instantiate(params, &mut context, operations, structures, stack))
+            }
+            SequenceValue::Operation(id) => {
+                let mut context = Context::empty();
+                operations[id]
+                    .instantiate(params, &mut context, operations, structures, stack)
+                    .process(&mut Context::empty(), stack, &mut vec![], operations)
+                    .expect("error: did not have value")
+            }
+            SequenceValue::Value(_) => {
+                assert!(params.len() == 1);
+                params[0].get_value(stack).clone()
+            }
+        }
+    }
+}
 
 /// Sequence is intuitively a sequence of words.
 /// It corresponds to whole signatures, such as `move Pos by Pos`.
@@ -94,6 +144,51 @@ impl Sequence {
             return;
         }
     }
+}
+
+impl Translator {
+    pub fn get_sequence(&self, node: &Node) -> Sequence {
+        self.expect_node_kind(node, "sequence");
+        let mut seq = vec![];
+        for n in get_children(node) {
+            match n.kind() {
+                "keyword" => {
+                    seq.push(Word::Keyword(self.text(&n).to_string()));
+                }
+                "value" => {
+                    let val = self.get_atomic_value(&n);
+                    seq.push(Word::Type(val.get_type()));
+                }
+                x => panic!("unexpected type in sequence: {x}")
+            }
+        }
+        Sequence::from(seq)
+    }
+
+    pub fn get_sequence_with_params(&self, node: &Node) -> (Sequence,Vec<Variable>) {
+        self.expect_node_kind(node, "sequence");
+        let mut seq = Sequence::new();
+        let mut params = vec![];
+        for n in get_children(node) {
+            match n.kind() {
+                "keyword" => {
+                    seq.push(Word::Keyword(self.text(&n).to_string()));
+                }
+                "value" => {
+                    let val = self.get_atomic_value(&n);
+                    seq.push(Word::Type(val.get_type()));
+                    if let Some(var_name) = self.get_variable_name(&n) {
+                        params.push(Variable::new(var_name, val.get_type()));
+                    } else {
+                        params.push(val.to_var());
+                    }
+                }
+                x => panic!("unexpected type in sequence: {x}")
+            }
+        }
+        (seq,params)
+    }
+
 }
 
 impl Display for Sequence {

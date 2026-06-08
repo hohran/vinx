@@ -1,3 +1,5 @@
+use std::process::exit;
+
 use context::Context;
 use translator::parse;
 
@@ -11,8 +13,13 @@ pub mod translator;
 pub mod variable;
 
 pub fn run(media_file: String, command_file: String, output_path: String) {
-    let (mut stack, mut actions, operations) = parse(&command_file);
-    // let mut action_activeness = get_action_activeness(&actions);
+    let (mut stack, mut actions, operations) = match parse(&command_file) {
+        Ok(x) => x,
+        Err(e) => {
+            e.print();
+            exit(1);
+        },
+    };
     let mut action_handles: Vec<ActionHandle> = vec![];
     let video = Video::from_file(media_file, "ffmpeg").expect("could not read video file");
     let mut context = Context::from(video);

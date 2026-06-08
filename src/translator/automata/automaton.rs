@@ -103,7 +103,7 @@ impl Automaton {
         if seq.is_empty() {
             let Some(sv) = self.return_values.get(&cur) else { return vec![] };
             if let Some(r) = ret_id {
-                cur_constraints.intersect_var(r, &sv.into_variable_type(operations));
+                cur_constraints.intersect_var(r, &sv.into_type(operations));
             }
             cur_constraints.refresh_bindings();
             return vec![cur_constraints];

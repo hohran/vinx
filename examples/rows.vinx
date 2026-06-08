@@ -144,6 +144,11 @@ move [$p] $d by $s = move $p $d by $s;
 // ** described bellow
 move [$p] [$d] by [$s] = move $p $d by $s;
 
+// // make the rows more aligned in the center:
+// at 1 frame {
+//   move $rows [down] by [15];
+// }
+
 "move"
 every frame {
     // **

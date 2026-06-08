@@ -1,78 +1,37 @@
-// TODO refactor
 extern crate tree_sitter;
 extern crate tree_sitter_vinx;
 
 mod automata;
 mod type_constraints;
 mod translator;
-pub mod word;
-pub use word::Word;
+mod word;
 mod signature;
-pub use signature::Signature;
-
-pub use translator::parse;
-use tree_sitter::Node;
+mod error;
 mod builtins;
-pub mod sequence;
-// mod component_class;
+mod sequence;
 mod operations;
 mod structures;
 mod value;
 mod actions;
 mod file_manager;
+mod ast;
 
-use crate::{context::Context, event::Operations, variable::{Stack, Structure, Variable, Scope, VariableType, VariableValue}};
-// use crate::vtype;
+pub use translator::Translator;
+pub use translator::parse;
+pub use signature::Signature;
+pub use sequence::{SequenceValue, Sequence};
+pub use operations::MemberDef;
+pub use structures::StructureTemplate;
 
-#[derive(Debug)]
-pub struct StructureTemplate {
-    id: usize,
-    // name: Option<String>,
-    param_names: Vec<String>,
-    param_types: Vec<VariableType>,
-    members: Vec<(String, SequenceValue, Vec<Variable>)>,
-}
+use automata::Automaton;
+use type_constraints::TypeConstraints;
+use word::Word;
+use sequence::{OperationId, StructureId};
+use error::{Warning, CompilationError, Location};
+use builtins::{load_builtin_operations, load_builtin_structures};
+use file_manager::FileManager;
 
-impl StructureTemplate {
-    pub fn new(id: usize, param_names: Vec<String>, param_types: Vec<VariableType>, members: Vec<(String, SequenceValue, Vec<Variable>)>) -> Self {
-        Self { id, param_names, param_types, members }
-    }
-
-    pub fn instantiate(&self, params: Vec<Variable>, context: &mut Context, operations: &Operations, structures: &Vec<StructureTemplate>, stack: &mut Stack) -> Structure {
-        assert_eq!(params.len(), self.param_names.len());
-        // println!("instantiating structure {} with {params:?}", self.id);
-        stack.push();
-        let mut members = Scope::new();
-        for i in 0..params.len() {
-            assert!(params[i].get_type().is_assignable_to(&self.param_types[i]));
-            members.insert(self.param_names[i].clone(), params[i].get_value(stack).clone());
-            stack.add_variable(self.param_names[i].clone(), params[i].get_value(stack).clone()); // TODO: we should cast it to the expected param type (self.params[i])
-        }
-        for (name,val,ps) in &self.members {
-            let member_val = match val {
-                SequenceValue::Operation(id) => {
-                    operations[*id]
-                        .instantiate(ps.clone(), context, operations, structures, stack)
-                        .process(context, stack, &mut vec![], operations) // TODO: fix hashmap for action activeness
-                        .expect("error: did not have value")
-                }
-                SequenceValue::Structure(id) => {
-                    let val = structures[*id].instantiate(ps.clone(), context, operations, structures, stack);
-                    VariableValue::Structure(val)
-                }
-                SequenceValue::Value(_) => {
-                    assert_eq!(ps.len(), 1, "only 1 param for value");
-                    ps[0].get_value(stack).clone()
-                }
-            };
-            members.insert(name.clone(), member_val.clone());
-            stack.add_variable(name.clone(), member_val);
-        }
-        stack.pop();
-        let s = Structure::new(self.id, members);
-        s
-    }
-}
+use tree_sitter::Node;
 
 /// Gets node children without comments
 fn get_children<'a>(node: &Node<'a>) -> Vec<Node<'a>> {
@@ -82,30 +41,4 @@ fn get_children<'a>(node: &Node<'a>) -> Vec<Node<'a>> {
 /// Gets node children with unnamed symbols without comments
 fn get_all_children<'a>(node: &Node<'a>) -> Vec<Node<'a>> {
     node.children(&mut node.walk()).filter(|n| n.kind() != "comment").collect()
-}
-
-pub type OperationId = usize;
-pub type StructureId = usize;
-
-#[derive(Clone,Eq,PartialEq,Debug)]
-pub enum SequenceValue {
-    Operation(OperationId),
-    Structure(StructureId),
-    Value(VariableType),
-}
-
-impl SequenceValue {
-    pub fn into_variable_type(&self, operations: &Operations) -> VariableType {
-        match self {
-            SequenceValue::Operation(f_id) => {
-                let op = &operations[*f_id];
-                let Some(ret) = op.get_return_type() else {
-                    panic!("no return type for: {}", op.get_signature());
-                };
-                ret.clone()
-            }
-            SequenceValue::Structure(s) => VariableType::Structure(*s),
-            SequenceValue::Value(t) => t.clone()
-        }
-    }
 }

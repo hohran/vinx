@@ -1,11 +1,18 @@
 use image::Rgb;
 use tree_sitter::Node;
 
-use crate::{context::Context, translator::{SequenceValue, get_children, sequence::Sequence, translator::Kind}, variable::{Direction, Effect, Variable, VariableValue}};
-
-use super::{translator::Translator, Word};
+use super::{Translator, CompilationError, get_children};
+use crate::variable::{Direction, Effect, Variable, VariableValue};
 
 impl Translator {
+    /// Get the corresponding source code of the node.
+    pub fn text(&self, node: &Node) -> &str {
+        let range = node.range();
+        let text = self.file_manager.current_file_contents();
+        &text[range.start_byte..range.end_byte]
+    }
+
+    /// Get variable name either from a "value" or "variable" node.
     pub fn get_variable_name(&self, node: &Node) -> Option<&str> {
         if node.kind() == "value" {
             if node.child(0).unwrap().kind() != "variable" {
@@ -20,8 +27,23 @@ impl Translator {
         }
     }
 
+    /// Get value of a sequence given by `node`.
+    ///  * `top [1,2,3]` -> 1
+    pub fn get_sequence_value(&mut self, node: &Node) -> Result<VariableValue, CompilationError> {
+        self.expect_node_kind(node, "sequence");
+        let (seq,params) = self.get_sequence_with_params(node);
+        match self.automaton.run(seq.get()) {
+            Some(sv) => Ok(sv.into_value(params, &self.operations, &self.structures, &mut self.globals)),
+            None => Err(CompilationError::UnknownSequence(seq, self.get_location(node)))
+        }
+    }
+
+    /// Transform "value" node into VariableValue.
+    ///  * 1     -> VariableValue::Int(1)
+    ///  * (1,1) -> VariableValue::Pos(1,1)
+    ///  * red   -> VariableValue::Color(*red*)
     pub fn get_atomic_value(&self, node: &Node) -> VariableValue {
-        node.expect_kind("value", self);
+        self.expect_node_kind(node, "value");
         let val = node.child(0).unwrap();
         match val.kind() {
             "position" => self.pos_to_val(&val),
@@ -48,81 +70,28 @@ impl Translator {
         }
     }
 
-    pub fn get_sequence_value(&mut self, node: &Node) -> VariableValue {
-        node.expect_kind("sequence", self);
-        let children = get_children(node);
-        // if children.len() == 1 {
-        //     return self.get_atomic_value(&children[0]);
-        // }
-        let mut seq = Sequence::new();
-        let mut params = vec![];
-        for n in children {
-            match n.kind() {
-                "keyword" => {
-                    seq.push(Word::Keyword(self.text(&n).to_string()));
-                }
-                "value" => {
-                    let val = self.get_atomic_value(&n);
-                    seq.push(Word::Type(val.get_type()));
-                    params.push(val.to_var());
-                }
-                x => panic!("unexpected type in sequence: {x}")
+    /// Transform a "value" node into a variable:
+    ///   * static variable for literals (e.g., red, 1, ...)
+    ///   * otherwise named variable
+    fn get_variable(&self, node: &Node) -> Variable {
+        self.expect_node_kind(node, "value");
+        if node.child(0).unwrap().kind() == "variable" {
+            let name = self.text(&node);
+            match self.globals.get_variable(name) {
+                Some(val) => Variable::new(name, val.get_type()),
+                None => panic!("error: unknown variable {name}"),
             }
-        }
-        let ret = self.action_decision_automaton.run(seq.get());
-        let Some(sv) = ret else {
-            panic!("error: invalid sequence: {seq}");
-        };
-        match sv {
-            SequenceValue::Structure(id) => {
-                let mut context = Context::empty();
-                // FIXME
-                VariableValue::Structure(self.structures[id].instantiate(params, &mut context, &self.operations, &self.structures, &mut self.globals))
-            }
-            SequenceValue::Operation(id) => {
-                let mut context = Context::empty();
-                self.operations[id]
-                    .instantiate(params, &mut context, &self.operations, &self.structures, &mut self.globals)
-                    .process(&mut Context::empty(), &mut self.globals, &mut vec![], &self.operations)
-                    .expect("error: did not have value")
-            }
-            SequenceValue::Value(_) => {
-                assert!(params.len() == 1);
-                params[0].get_value(&self.globals).clone()
-            }
-            // _ => panic!("error: unexpected sequence value {:?}", sv)
+        } else {
+            self.get_atomic_value(node).to_var()
         }
     }
 
-    fn get_variable(&self, node: &Node) -> Variable {
-        node.expect_kind("value", self);
-        let val = node.child(0).unwrap();
-        match val.kind() {
-            "position" => self.pos_to_val(&val).to_var(),
-            "color" => self.color_to_val(&val).to_var(),
-            "effect" => self.effect_to_val(&val).to_var(),
-            "variable" => {
-                let name = self.text(&val);
-                let var = self.globals.get_variable(name).expect(&format!("error: unknown variable \"{}\" at row {}", self.text(&val), node.start_position().row)).clone();
-                Variable::new(name, var.get_type())
-            }
-            "direction" => self.direction_to_val(&val).to_var(),
-            "number" => VariableValue::Int(self.node_to_int(&val) as i32).to_var(),
-            "vector" => {
-                let mut v = vec![];
-                for elem in get_children(&val) {
-                    v.push(self.get_variable(&elem));
-                }
-                VariableValue::Vec(v).to_var()
-            }
-            _ => {
-                panic!("unknown value type {}", val.kind());
-            }
-        }
-    }
+    /*****************************************/
+    /*** SPECIFIC NODE TO VALUE CONVERTERS ***/
+    /*****************************************/
 
     fn pos_to_val(&self,node: &Node) -> VariableValue {
-        node.expect_kind("position", self);
+        self.expect_node_kind(node, "position");
         let x = node.named_child(0).expect("expected position to have 2 child nodes");
         let y = node.named_child(1).expect("expected position to have 2 child nodes");
 
@@ -130,7 +99,7 @@ impl Translator {
     }
 
     fn direction_to_val(&self, node: &Node) -> VariableValue {
-        node.expect_kind("direction", self);
+        self.expect_node_kind(node, "direction");
         match self.text(&node) {
             "left" => VariableValue::Direction(Direction::Left),
             "right" => VariableValue::Direction(Direction::Right),
@@ -141,7 +110,7 @@ impl Translator {
     }
 
     fn effect_to_val(&self, node: &Node) -> VariableValue {
-        node.expect_kind("effect", self);
+        self.expect_node_kind(node, "effect");
         match self.text(&node) {
             "blurred" => VariableValue::Effect(Effect::Blur),
             "randomized" => VariableValue::Effect(Effect::Random),
@@ -181,8 +150,19 @@ impl Translator {
         }
     }
 
-    fn color_code_to_val(&self, _node: &Node) -> VariableValue {
-        todo!("error: color_code_to_val yet to be implemented");
+    fn color_code_to_val(&self, node: &Node) -> VariableValue {
+        let val = self.text(&node);
+        let mut it = val.chars().skip(1); // skip '#'
+        let mut r = 0;
+        if let Some(c) = it.next() { r = c2i(c)*16; }
+        if let Some(c) = it.next() { r += c2i(c); }
+        let mut g = 0;
+        if let Some(c) = it.next() { g = c2i(c)*16; }
+        if let Some(c) = it.next() { g += c2i(c); }
+        let mut b = 0;
+        if let Some(c) = it.next() { b = c2i(c)*16; }
+        if let Some(c) = it.next() { b += c2i(c); }
+        VariableValue::Color(Rgb([r,g,b]))
     }
 
     pub fn node_to_int(&self, node: &Node) -> i32 {
@@ -190,8 +170,20 @@ impl Translator {
     }
 
     pub fn node_to_string(&self, node: &Node) -> String {
-        node.expect_kind("string", self);
+        self.expect_node_kind(node, "string");
         let str = self.text(node);
         str[1..str.len()-1].to_string()
     }
 }
+
+/// Convert char to int (for color value resolution).
+fn c2i(c: char) -> u8 {
+    if c <= '9' {
+        (c as u8) - ('0' as u8)
+    } else if c <= 'F' {
+        (c as u8) - ('A' as u8) + 10
+    } else {
+        (c as u8) - ('a' as u8) + 10
+    }
+}
+

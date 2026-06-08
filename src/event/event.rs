@@ -40,9 +40,9 @@ impl Event {
     fn process_composed(&mut self, context: &mut Context, stack: &mut Stack, operations: &Operations, action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
         let op = &operations[self.id];
         let iterators = op.get_iterators();
-        let operands = op.get_operands();
+        let operands = op.get_params();
+        self.push_structure_layer(stack, op); // having layers in this order makes sure that method parameters override structure members
         self.push_operation_layer(stack, op);
-        self.push_structure_layer(stack, op);
         self.push_iterator_layer(stack, op, iterators);
         let iterations = self.get_iterations(iterators, stack);
         let iterated_params = self.get_iterated_params(iterators);
@@ -53,8 +53,8 @@ impl Event {
             self.fetch_iterated_values(stack, &iterated_params, operands, it);
         }
         stack.pop();
-        self.pop_structure_layer(stack, op);
         self.pop_operation_layer(stack, op);
+        self.pop_structure_layer(stack, op);
         result
     }
 
@@ -83,28 +83,28 @@ impl Event {
     }
 
     fn push_operation_layer(&self, stack: &mut Stack, op: &Operation) {
-        assert!(self.params.len() == op.operands.len(), "error: incorrect number of parameters: expected {}, got {}", op.operands.len(), self.params.len());
+        assert!(self.params.len() == op.get_params().len(), "error: incorrect number of parameters: expected {}, got {}", op.get_params().len(), self.params.len());
         // stack.pretty_println("== operation layer ==".to_string());
         stack.push();
         for (n,v) in &self.vars {
             stack.add_variable(n.clone(), v.clone());
         }
-        for i in 0..op.operands.len() {
+        for i in 0..op.get_params().len() {
             let val = self.params[i].get_value(&stack);
-            stack.add_variable(op.operands[i].clone(), val.clone());
+            stack.add_variable(op.get_params()[i].clone(), val.clone());
         }
     }
 
     fn pop_operation_layer(&mut self, stack: &mut Stack, op: &Operation) {
-        assert!(self.params.len() == op.operands.len(), "error: incorrect number of parameters: expected {}, got {}", op.operands.len(), self.params.len());
+        assert!(self.params.len() == op.get_params().len(), "error: incorrect number of parameters: expected {}, got {}", op.get_params().len(), self.params.len());
         let layer = stack.pop();
         // stack.pretty_println("-- operation layer --".to_string());
-        for i in 0..op.operands.len() {
-            if op.structure_param_id == Some(i) {
+        for i in 0..op.get_params().len() {
+            if op.method_of() == Some(&i) {
                 continue;
             }
             // stack.pretty_println(format!("getting var: {}", op.operands[i]));
-            let val = layer.get(&op.operands[i]).unwrap();
+            let val = layer.get(&op.get_params()[i]).unwrap();
             self.params[i].set_value(stack, val.clone());
         }
         let variable_names: Vec<String> = self.vars.keys().map(|x| x.clone()).collect();
@@ -119,9 +119,9 @@ impl Event {
         if !self.active_struct {
             return;
         }
-        if let Some(param_id) = op.structure_param_id {
+        if let Some(param_id) = op.method_of() {
             // FIXME: vec of structures is not allowed
-            let VariableValue::Structure(s) = self.params[param_id].get_value(stack) else {
+            let VariableValue::Structure(s) = self.params[*param_id].get_value(stack) else {
                 panic!();
             };
             stack.push_scope(s.copy_members());
@@ -132,12 +132,12 @@ impl Event {
         if !self.active_struct {
             return;
         }
-        if let Some(param_id) = op.structure_param_id {
-            let VariableValue::Structure(mut s) = self.params[param_id].get_value(stack).clone() else {
+        if let Some(param_id) = op.method_of() {
+            let VariableValue::Structure(mut s) = self.params[*param_id].get_value(stack).clone() else {
                 panic!();
             };
             s.update(stack);
-            self.params[param_id].set_value(stack, VariableValue::Structure(s));
+            self.params[*param_id].set_value(stack, VariableValue::Structure(s));
             stack.pop();
         }
     }
@@ -146,7 +146,7 @@ impl Event {
         // stack.pretty_println("== iterator layer ==".to_string());
         stack.push();
         for i in iterators {
-            let it_name = &op.operands[*i];
+            let it_name = &op.get_params()[*i];
             stack.add_variable(it_name.clone(), VariableValue::placeholder());
         }
     }
@@ -171,11 +171,11 @@ impl Event {
             }
             // get vector value
             let VariableValue::Vec(v) = &param_values[i] else {
-                panic!("error: expected vector type for iterated value: {}, got {}", op.operands[i], param_values[i].get_type())
+                panic!("error: expected vector type for iterated value: {}, got {}", op.get_params()[i], param_values[i].get_type())
             };
             // get current iteration value
             let index = iteration % v.len();
-            stack.update_variable(&op.operands[i], v[index].get_value(stack).clone());
+            stack.update_variable(&op.get_params()[i], v[index].get_value(stack).clone());
         }
     }
 

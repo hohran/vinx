@@ -1,28 +1,28 @@
 use std::fmt::Debug;
 
-use crate::{context::Context, event::{builtins::Builtin, event::{Event, EventEffect}}, translator::{SequenceValue, StructureTemplate, sequence::Sequence}, variable::{Variable, Stack, Scope, VariableType, VariableValue}};
+use crate::{context::Context, event::{builtins::Builtin, event::{Event, EventEffect}}, translator::{MemberDef, SequenceValue, Signature, StructureTemplate, Sequence}, variable::{Scope, Stack, Variable, VariableType, VariableValue}};
 
 pub type Operations = Vec<Operation>;
 
 #[derive(Debug,Clone)]
 pub struct Operation {
     id: usize,
-    signature: Sequence,
-    pub operands: Vec<String>,
+    pub signature: Signature,
+    // pub operands: Vec<String>,
     effect: EventEffect,
-    iterators: Vec<usize>,
+    // iterators: Vec<usize>,
     members: Vec<(String,SequenceValue,Vec<Variable>)>,
-    pub structure_param_id: Option<usize>,
+    // pub structure_param_id: Option<usize>,
     result: Option<VariableType>,
 }
 
 impl Operation {
-    pub fn new(id: usize, signature: Sequence, operands: Vec<String>, events: Vec<Event>, iterators: Vec<usize>, members: Vec<(String,SequenceValue,Vec<Variable>)>, structure_param_id: Option<usize>, result: Option<VariableType>) -> Self {
-        Self { id, operands, effect: EventEffect::Composed(events), iterators, members, structure_param_id, signature, result }
+    pub fn new(id: usize, signature: Signature, events: Vec<Event>, members: Vec<MemberDef>, result: Option<VariableType>) -> Self {
+        Self { id, effect: EventEffect::Composed(events), members, signature, result }
     }
 
-    pub fn from_builtin(id: usize, signature: Sequence, builtin: Builtin, result: Option<VariableType>) -> Self {
-        Self { id, signature, operands: vec![], effect: EventEffect::Builtin(builtin), iterators: vec![], members: vec![], structure_param_id: None, result }
+    pub fn from_builtin(id: usize, sequence: Sequence, builtin: Builtin, result: Option<VariableType>) -> Self {
+        Self { id, signature: Signature::from(sequence), effect: EventEffect::Builtin(builtin), members: vec![], result }
     }
 
     pub fn get_return_type(&self) -> Option<&VariableType> {
@@ -30,21 +30,21 @@ impl Operation {
     }
 
     pub fn get_signature(&self) -> &Sequence {
-        &self.signature
+        &self.signature.sequence
     }
 
     pub fn is_iterated(&self) -> bool {
-        !self.iterators.is_empty()
+        !self.signature.iterators.is_empty()
     }
 
     /// Returns if the operation is a structure method.
     pub fn is_method(&self) -> bool {
-        self.structure_param_id.is_some()
+        self.signature.structure_param_id.is_some()
     }
 
     /// Returns the respective structure
     pub fn method_of(&self) -> Option<&usize> {
-        self.structure_param_id.as_ref()
+        self.signature.structure_param_id.as_ref()
     }
 
     pub fn instantiate(&self, params: Vec<Variable>, context: &mut Context, operations: &Operations, structures: &Vec<StructureTemplate>, stack: &mut Stack) -> Event {
@@ -54,7 +54,7 @@ impl Operation {
         }
         stack.push();
         for i in 0..params.len() {
-            let name = self.operands[i].clone();
+            let name = self.signature.params[i].clone();
             let value = params[i].get_value(stack).clone();
             stack.add_variable(name, value);
         }
@@ -85,23 +85,23 @@ impl Operation {
     }
 
     pub fn push_to_stack(&self, params: &Vec<Variable>, variables: &Scope, stack: &mut Stack) {
-        assert!(params.len() == self.operands.len(), "error: incorrect number of parameters: expected {}, got {}", self.operands.len(), params.len());
+        assert!(params.len() == self.signature.params.len(), "error: incorrect number of parameters: expected {}, got {}", self.signature.params.len(), params.len());
         stack.push_scope(variables.clone());
-        for i in 0..self.operands.len() {
+        for i in 0..self.signature.params.len() {
             let val = params[i].get_value(stack);
-            stack.add_variable(self.operands[i].clone(), val.clone());
+            stack.add_variable(self.signature.params[i].clone(), val.clone());
         }
     }
 
     pub fn get_iterators(&self) -> &Vec<usize> {
-        &self.iterators
+        &self.signature.iterators
     }
 
-    pub fn get_operands(&self) -> &Vec<String> {
-        &self.operands
+    pub fn get_params(&self) -> &Vec<String> {
+        &self.signature.params
     }
 
     pub fn get_iterated_param_name(&self, param_index: usize) -> String {
-        format!("{}!", self.operands[param_index])
+        format!("{}!", self.signature.params[param_index])
     }
 }

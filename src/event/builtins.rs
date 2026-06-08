@@ -118,8 +118,7 @@ pub fn rotate_vec(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Va
 }
 
 pub fn get_frame(context: &mut Context, _stack: &mut Stack, _params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
-    println!("here");
-    if context.is_empty() { return None; }
+    if context.is_empty() { return None; } // TODO: should we really return None in here?
     let frame = context.get_frame();
     Some(VariableValue::Image(frame.clone()))
 }

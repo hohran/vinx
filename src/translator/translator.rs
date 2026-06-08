@@ -1,189 +1,174 @@
-use std::process::exit;
-
-use colorized::Color;
 use tree_sitter::Node;
 
-use crate::{action::Action, event::Operations, translator::{StructureTemplate, builtins::load_builtin_structures, file_manager::FileManager, get_children, sequence::Sequence}, variable::{Variable, Stack, VariableValue}};
-
-use super::{automata::Automaton, builtins::load_builtin_operations, Word};
-
-pub trait Kind {
-    fn expect_kind(&self, expect: &str, translator: &Translator);
-}
-
-impl<'a> Kind for Node<'a> {
-    fn expect_kind(&self, expect: &str, translator: &Translator) {
-        let kind = self.kind();
-        if kind != expect {
-            let Some((start,end)) = translator.get_node_print_range(self) else {
-                println!("error: expected node type to be {}, got {}, in node:", expect.color(colorized::Colors::RedFg), kind.color(colorized::Colors::RedFg));
-                panic!();
-            };
-            println!("error: expected node type to be {}, got {}, in node:", expect.color(colorized::Colors::RedFg), kind.color(colorized::Colors::RedFg));
-            println!(" {}: {}{}{}", self.start_position().row.to_string().color(colorized::Colors::RedFg),
-                translator.text_from_to(start, self.start_byte()),
-                translator.text_from_to(self.start_byte(), self.end_byte()).color(colorized::Colors::RedFg),
-                translator.text_from_to(self.end_byte(), end));
-            exit(1);
-        }
-    }
-}
+use super::*;
+use crate::{action::Action, event::Operations, variable::{Stack, VariableValue}};
 
 pub struct Translator {
     parser: tree_sitter::Parser,
     pub globals: Stack,
     pub actions: Vec<Action>,
-    pub action_decision_automaton: Automaton,
+    pub automaton: Automaton,
     pub operations: Operations,
     pub structures: Vec<StructureTemplate>,
     pub _number_of_builtin_structures: usize,
     pub file_manager: FileManager,
     pub _unresolved_parameter_types: usize,
+    pub self_reference_name: &'static str,
+    warnings: Vec<Warning>,
 }
 
 impl Translator {
-    /// gets string value of node in source code
-    pub fn text(&self,node: &Node) -> &str {
-        let range = node.range();
-        let text = self.file_manager.current_file_contents().expect("error: no file is currently processed");
-        &text[range.start_byte..range.end_byte]
-    }
-
-    pub fn text_from_to(&self, start: usize, end: usize) -> &str {
-        let text = self.file_manager.current_file_contents().expect("error: no file is currently processed");
-        &text[start..end]
-    }
-
-    pub fn get_node_print_range(&self, node: &Node) -> Option<(usize,usize)> {
-        let Some(cont) = self.file_manager.current_file_contents() else {
-            return None;
+    // Creates a new translator with loaded builtins.
+    pub fn new(filepath: &str) -> Result<Self, CompilationError> {
+        let mut parser = tree_sitter::Parser::new();
+        parser.set_language(&tree_sitter_vinx::LANGUAGE.into()).expect("error: could not load vinx grammar");
+        let mut aut = Automaton::new();
+        let operations = load_builtin_operations(&mut aut);
+        let builtin_structures = load_builtin_structures(&mut aut);
+        let struct_count = builtin_structures.len();
+        let Some(file_manager) = FileManager::new(filepath) else {
+            return Err(CompilationError::FileNotFound(filepath.to_string(), None));
         };
-        
-        let range = node.range();
-        let node_start = range.start_byte;
-        let print_start = node_start.saturating_sub(range.start_point.column);
-        let mut node_end = range.end_byte;
-        let cont_bytes = cont.as_bytes();
-        for i in node_end..cont_bytes.len() {
-            if cont_bytes[i] == 10 {    // newline value
-                node_end = i;
-                break;
-            }
-        }
-        Some((print_start,node_end))
+        Ok(Translator {
+            parser,
+            file_manager,
+            globals: Stack::new(),
+            actions: vec![],
+            automaton: aut,
+            operations: operations,
+            structures: builtin_structures,
+            _number_of_builtin_structures: struct_count,
+            _unresolved_parameter_types: 0,
+            self_reference_name: "$self",
+            warnings: vec![],
+        })
     }
 
-    /// transforms into owned Translator
+    pub fn get_location(&self, node: &Node) -> Location {
+        return Location::new(self.file_manager.current_file(), node.range())
+    }
+
+    pub fn expect_node_kind(&self, node: &Node, expect: &str) {
+        let kind = node.kind();
+        if kind != expect {
+            let file = self.file_manager.current_file().to_string();
+            let start = node.range().start_point;
+            panic!("{file}:{}:{}: error: expected node type to be {}, got {}", start.row, start.column, expect, kind);
+        }
+    }
+
+    /// Get the top-level stack, list of actions, and defined operations.
     pub fn get(self) -> (Stack,Vec<Action>,Operations) {
         assert_eq!(self._unresolved_parameter_types,0);
-        ( self.globals, self.actions, self.operations ) //, source_code: self.source_code }
+        ( self.globals, self.actions, self.operations )
     }
 
-    pub fn load_file(&mut self, filepath: &str) {
-        let dependency = self.file_manager.start(filepath);
+    // Load the source code in file, specified by `node`.
+    //
+    // If the file is not found, or is recursive with another loaded file, return an error.
+    fn load_file(&mut self, node: &Node) -> Result<(), CompilationError> {
+        self.expect_node_kind(node, "file_load");
+        let filepath_node = node.child_by_field_name("filename").unwrap();
+        let filepath = &self.node_to_string(&filepath_node);
+        let Some(dependency) = self.file_manager.start(filepath) else {
+            // FIXME: when to add ".vinx" to the filepath
+            return Err(CompilationError::FileNotFound(filepath.to_string()+".vinx", Some(self.get_location(node))));
+        };
         if dependency.is_recursive() {
-            panic!("error: recursive dependency of \"{}\" and \"{filepath}\"", self.file_manager.current_file().unwrap());
+            let other_file = self.file_manager.current_file().to_string();
+            return Err(CompilationError::RecursiveFileDependency(other_file, filepath.to_string()+".vinx", self.get_location(node)));
         }
-        let contents = self.file_manager.current_file_contents().expect(&format!("error: could not read currently loaded file {}", filepath));
+        if dependency.is_redundant() {
+            self.warnings.push(Warning::RedundantFileLoad(filepath.to_string()+".vinx", self.get_location(node)));
+            return Ok(());
+        }
+        let contents = self.file_manager.current_file_contents();
         let tree = self.parser.parse(contents, None).expect("Could not parse input file");
-        self.load_from_node(&tree.root_node());
+        self.load_from_node(&tree.root_node())?;
         self.file_manager.finish_file();
+        Ok(())
     }
 
-    fn handle_definition(&mut self, node: &Node) {
-        node.expect_kind("definition", self);
+    // Compile the specified program.
+    pub fn compile(&mut self) -> Result<(), CompilationError> {
+        let contents = self.file_manager.load_file_contents();
+        let tree = self.parser.parse(contents, None).expect("Could not parse input file");
+        self.load_from_node(&tree.root_node())?;
+        self.file_manager.finish_file();
+        Ok(())
+    }
+
+    /// Parse and create given operation/structure based on the definition
+    fn handle_definition(&mut self, node: &Node) -> Result<(), CompilationError> {
+        self.expect_node_kind(node, "definition");
         let children = get_children(node);
         let signature = &children[0];
         let definition = &children[1];
         // if definition contains operation definitions, it is structure
-        let is_structure = get_children(definition).iter().find(|n| n.kind() == "definition").is_some();
-        self.globals.push();
-        if is_structure {
-            self.parse_structure(signature, definition);
-        } else {
-            self.parse_operation(signature, definition);
+        let structure_proof = get_children(definition).iter().find(|n| n.kind() == "definition").cloned();
+        let operation_proof = get_children(definition).iter().find(|n| n.kind() == "sequence").cloned();
+        if structure_proof.is_some() && operation_proof.is_some() {
+            return Err(CompilationError::VagueDefinition(
+                    self.get_location(signature),
+                    self.get_location(&operation_proof.unwrap()), 
+                    self.get_location(&structure_proof.unwrap())))
         }
-        self.globals.pop();
+        self.globals.push(); {
+            if structure_proof.is_some() {
+                self.parse_structure(signature, definition)?;
+            } else {
+                self.parse_operation(signature, definition)?;
+            }
+        } self.globals.pop();
+        Ok(())
     }
 
-    /// load all rules in node: variable definitions, actions, and definitions of operations and (in future) components
-    pub fn load_from_node(&mut self, node: &Node) {
-        for rule in get_children(node) {
-            match rule.kind() {
+    /// Loads all statements of the `root_node` of given file.
+    pub fn load_from_node(&mut self, root_node: &Node) -> Result<(), CompilationError> {
+        self.expect_node_kind(root_node, "source_file");
+        for stmt in get_children(root_node) {
+            match stmt.kind() {
                 "var_definition" => {
-                    self.get_var_definition(&rule);
+                    self.get_var_definition(&stmt)?;
                 }
                 "action" => {
-                    self.get_action_definition(&rule);
+                    self.get_action_definition(&stmt)?;
                 }
                 "definition" => {
-                    self.handle_definition(&rule);
+                    self.handle_definition(&stmt)?;
                 }
                 "file_load" => {
-                    let filepath_node = rule.child_by_field_name("filename").unwrap();
-                    self.load_file(&self.node_to_string(&filepath_node));
+                    self.load_file(&stmt)?;
                 }
                 x => { 
-                    panic!("error: unexpected definition: {:?}", x);
+                    panic!("error: unexpected statement: {:?}", x);
                 }
             }
         }
-    }
-
-    pub fn get_sequence(&self, node: &Node) -> Sequence {
-        node.expect_kind("sequence", self);
-        let mut seq = vec![];
-        for n in get_children(node) {
-            match n.kind() {
-                "keyword" => {
-                    seq.push(Word::Keyword(self.text(&n).to_string()));
-                }
-                "value" => {
-                    let val = self.get_atomic_value(&n);
-                    seq.push(Word::Type(val.get_type()));
-                }
-                x => panic!("unexpected type in sequence: {x}")
-            }
-        }
-        Sequence::from(seq)
-    }
-
-    pub fn get_sequence_with_params(&self, node: &Node) -> (Sequence,Vec<Variable>) {
-        node.expect_kind("sequence", self);
-        let mut seq = Sequence::new();
-        let mut params = vec![];
-        for n in get_children(node) {
-            match n.kind() {
-                "keyword" => {
-                    seq.push(Word::Keyword(self.text(&n).to_string()));
-                }
-                "value" => {
-                    let val = self.get_atomic_value(&n);
-                    seq.push(Word::Type(val.get_type()));
-                    if let Some(var_name) = self.get_variable_name(&n) {
-                        params.push(Variable::new(var_name, val.get_type()));
-                    } else {
-                        params.push(val.to_var());
-                    }
-                }
-                x => panic!("unexpected type in sequence: {x}")
-            }
-        }
-        (seq,params)
+        Ok(())
     }
 
     pub fn get_var_definition_name(&self, node: &Node) -> &str {
-        node.expect_kind("var_definition", self);
+        self.expect_node_kind(node, "var_definition");
         self.text(&node.child_by_field_name("lhs").unwrap())
     }
 
-    pub fn get_var_definition(&mut self, node: &Node) -> (String,VariableValue) {
-        node.expect_kind("var_definition", self);
-        let value = self.get_sequence_value(&node.child_by_field_name("rhs").unwrap());
+    pub fn get_var_definition(&mut self, node: &Node) -> Result<(String,VariableValue), CompilationError> {
+        self.expect_node_kind(node, "var_definition");
+        let value = self.get_sequence_value(&node.child_by_field_name("rhs").unwrap())?;
         let name = self.text(&node.child_by_field_name("lhs").unwrap()).to_string();
-        // println!("assigning {} to {name}",value.to_string());
-        self.globals.add_variable(name.clone(), value.clone());
-        (name,value.clone())
+        if self.is_forbidden_variable_name(&name) {
+            return Err(CompilationError::ForbiddenVariableName(name, self.get_location(node)));
+        }
+        if self.globals.add_variable(name.clone(), value.clone()) {
+            Ok((name,value.clone()))
+        } else {
+            Err(CompilationError::RedeclaredVariable(name, self.get_location(&node.child_by_field_name("lhs").unwrap())))
+        }
+    }
+
+    fn is_forbidden_variable_name(&self, name: &str) -> bool {
+        name == self.self_reference_name
     }
 
     pub fn new_unresolved_variable(&mut self) -> usize {
@@ -195,34 +180,15 @@ impl Translator {
         assert!(self._unresolved_parameter_types >= count);
         self._unresolved_parameter_types -= count;
     }
+
 }
 
-pub fn parse(filepath: &str) -> (Stack,Vec<Action>,Operations) {
-    let mut parser = tree_sitter::Parser::new();
-    parser.set_language(&tree_sitter_vinx::LANGUAGE.into()).expect("error: could not load vinx grammar");
-    let mut aut = Automaton::new();
-    let operations = load_builtin_operations(&mut aut);
-    let builtin_structures = load_builtin_structures(&mut aut);
-    let struct_count = builtin_structures.len();
-    let mut it = Translator {
-        parser,
-        globals: Stack::new(),
-        actions: vec![],
-        action_decision_automaton: aut,
-        operations: operations,
-        structures: builtin_structures,
-        _number_of_builtin_structures: struct_count,
-        file_manager: FileManager::new(),
-        _unresolved_parameter_types: 0,
-        // in_component: false,
-    };
-    it.load_file(filepath);
-    // let seqs = it.action_decision_automaton.get_all_sequences();
-    // println!("operations:");
-    // for (seq,_) in seqs {
-    //     println!("{}",seq_to_str(&seq));
-    // }
-    // println!();
-    it.get()
+pub fn parse(filepath: &str) -> Result<(Stack,Vec<Action>,Operations), CompilationError> {
+    let mut it = Translator::new(filepath)?;
+    it.compile()?;
+    for w in it.warnings.iter() {
+        w.print();
+    }
+    Ok(it.get())
 }
 

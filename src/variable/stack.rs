@@ -51,10 +51,10 @@ impl Stack {
     }
 
     /// Adds a variable to the top scope
-    /// This variable needs to be unique in the current scope
-    pub fn add_variable(&mut self, name: String, value: VariableValue) {
+    /// Returns whether it is unique in the current scope
+    pub fn add_variable(&mut self, name: String, value: VariableValue) -> bool {
         let top = self.top_mut();
-        assert!(top.insert(name.clone(), value).is_none(), "error: cannot add variable {name} because it already exists");
+        top.insert(name, value).is_none()
     }
 
     /// Updates a variable on the stack with a new value
@@ -153,7 +153,7 @@ mod tests {
     }
 
     #[test]
-    fn test_add_variable_correct() {
+    fn test_add_variable() {
         let mut s = Stack::new();
         s.add_variable("i".to_string(), VariableValue::Int(1));                                     // 1
         s.add_variable("p".to_string(), VariableValue::Pos(1, 1));                                  // (1,1)
@@ -174,11 +174,10 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
-    fn test_add_variable_failed() {
+    fn test_add_variable_duplicate() {
         let mut s = Stack::new();
         s.add_variable("a".to_string(), VariableValue::Int(1));
-        s.add_variable("a".to_string(), VariableValue::String("this should error".to_string()));
+        assert!(!s.add_variable("a".to_string(), VariableValue::String("this should error".to_string())));
     }
 
     #[test]

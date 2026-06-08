@@ -1,11 +1,8 @@
-use crate::event::Operation;
-use crate::translator::StructureTemplate;
-use crate::translator::sequence::Sequence;
+use crate::event::{Operation, builtins::*};
 use crate::{seq, word, vtype};
 use crate::variable::VariableType;
-use crate::event::{builtins::*};
 
-use super::{automata::Automaton, SequenceValue, Word};
+use super::{automata::Automaton, SequenceValue, Word, StructureTemplate, Sequence};
 
 macro_rules! builtin {
     (($($w:tt)+), $f:expr, $r:expr) => {

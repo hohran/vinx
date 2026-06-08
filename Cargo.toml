@@ -13,6 +13,5 @@ rand = "0.8.5"
 tree-sitter = { version = "0.25.8" }
 # tree-sitter-vinx = "0.1.0"
 tree-sitter-vinx = { path = "../../grammars/tree-sitter-vinx" }
-# indicatif = "0.17.9"
 colorized = "1.0.0"
 rayon = "1.10.0"
