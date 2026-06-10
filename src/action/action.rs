@@ -13,7 +13,7 @@ pub struct Action {
 }
 
 impl Action {
-    pub fn new(name: &str, events: Vec<Event>, trigger: Trigger) -> Self {
+    pub fn new(name: String, events: Vec<Event>, trigger: Trigger) -> Self {
         let name = if name == "" { None } else { Some(name.to_string()) };
         Self { name, events, trigger }
     }

@@ -53,6 +53,7 @@ impl StructureTemplate {
         s
     }
 }
+
 impl Translator {
     /// Parse structure with signature in `signature_node` and definition in `definition_node`.
     /// Such structure can have multiple interpretations, based on its definition.

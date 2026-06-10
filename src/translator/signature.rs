@@ -3,7 +3,7 @@ use std::fmt::Display;
 use tree_sitter::Node;
 
 use super::{Word, get_children, Sequence, Translator};
-use crate::{translator::error::CompilationError, variable::{VariableType, VariableValue}};
+use crate::{translator::{ast, error::CompilationError}, variable::{VariableType, VariableValue}};
 
 /// Structure for handling signatures of operations and structures.
 ///
@@ -25,6 +25,9 @@ impl Signature {
     pub fn from(seq: Sequence) -> Self {
         Self { sequence: seq, params: vec![], iterators: vec![], structure_param_id: None }
     }
+
+    // pub fn from_ast_signature(signature: ast::Signature) -> Self {
+    // }
 
     /// For a method signature, set the id of the bound structure parameter
     pub fn set_structure_param(&mut self, structure_id: usize) {

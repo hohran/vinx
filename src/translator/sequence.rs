@@ -3,7 +3,7 @@ use std::fmt::Display;
 use tree_sitter::Node;
 
 use super::{Word, get_children, StructureTemplate, Translator};
-use crate::{context::Context, event::Operations, variable::{Stack, Variable, VariableType, VariableValue}};
+use crate::{context::Context, event::Operations, translator::ast, variable::{Stack, Variable, VariableType, VariableValue}};
 
 pub type OperationId = usize;
 pub type StructureId = usize;

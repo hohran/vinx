@@ -2,21 +2,18 @@ use std::fmt::Debug;
 
 use crate::{context::Context, event::{builtins::Builtin, event::{Event, EventEffect}}, translator::{MemberDef, SequenceValue, Signature, StructureTemplate, Sequence}, variable::{Scope, Stack, Variable, VariableType, VariableValue}};
 
-pub type Operations = Vec<Operation>;
+pub type Operations = Vec<OperationTemplate>;
 
 #[derive(Debug,Clone)]
-pub struct Operation {
+pub struct OperationTemplate {
     id: usize,
     pub signature: Signature,
-    // pub operands: Vec<String>,
     effect: EventEffect,
-    // iterators: Vec<usize>,
     members: Vec<(String,SequenceValue,Vec<Variable>)>,
-    // pub structure_param_id: Option<usize>,
     result: Option<VariableType>,
 }
 
-impl Operation {
+impl OperationTemplate {
     pub fn new(id: usize, signature: Signature, events: Vec<Event>, members: Vec<MemberDef>, result: Option<VariableType>) -> Self {
         Self { id, effect: EventEffect::Composed(events), members, signature, result }
     }

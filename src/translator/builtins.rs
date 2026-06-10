@@ -1,4 +1,4 @@
-use crate::event::{Operation, builtins::*};
+use crate::event::{OperationTemplate, builtins::*};
 use crate::{seq, word, vtype};
 use crate::variable::VariableType;
 
@@ -29,7 +29,7 @@ macro_rules! builtins {
 }
 
 /// Generate all builtin operations, note them in the automaton `aut` and return them.
-pub fn load_builtin_operations(aut: &mut Automaton) -> Vec<Operation> {
+pub fn load_builtin_operations(aut: &mut Automaton) -> Vec<OperationTemplate> {
     let builtins: &[(Sequence, Option<VariableType>, Builtin)] = &builtins!(
         ("restricted" "move" Pos Direction "by" Int), move_pos;
         ("move" Pos Direction "by" Int), move_pos_phase;
@@ -39,6 +39,7 @@ pub fn load_builtin_operations(aut: &mut Automaton) -> Vec<Operation> {
         ("set" (Any(0)) "to" (Any(0))), set;
         ("rotate" [(Any(0))] Direction "by" Int), rotate_vec;
         ("top" [(Any(0))] "into" (Any(0))), top_into;
+        ("top" [Any(0)]) => VariableType::Any(0), top;
         ("add" Int "to" Int), add_to;
         ("draw" Color "rectangle" "from" Pos "to" Pos), draw_rect;
         ("draw" Effect "rectangle" "from" Pos "to" Pos), draw_effect_rect;
@@ -61,7 +62,7 @@ pub fn load_builtin_operations(aut: &mut Automaton) -> Vec<Operation> {
         if !aut.register(seq.clone(), SequenceValue::Operation(i)) {
             panic!("error: union did not create any new states");
         }
-        ops.push(Operation::from_builtin(i, seq.clone(), *op, ret.clone()));
+        ops.push(OperationTemplate::from_builtin(i, seq.clone(), *op, ret.clone()));
     }
     ops
 }

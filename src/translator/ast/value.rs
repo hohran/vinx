@@ -6,6 +6,7 @@ use crate::variable::{Direction, Effect};
 type Color = (u8, u8, u8); // TODO: add alpha
 type Position = (i64, i64);
 
+#[derive(Debug)]
 pub enum Value {
     Variable(String),
     Number(i64),

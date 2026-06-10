@@ -1,7 +1,7 @@
 use tree_sitter::Node;
 
 use super::*;
-use crate::{context::Context, event::{Event, Operation}, variable::{Variable, VariableValue}};
+use crate::{context::Context, event::{Event, OperationTemplate, Operations}, variable::{Variable, VariableValue}};
 
 pub type MemberDef = (String, SequenceValue, Vec<Variable>);
 
@@ -32,6 +32,7 @@ impl Translator {
                         if ints.len() == 0 && let Some(aut) = aut {
                             ints = aut.get_interpretations(seq.get(), Some(var_id), &self.operations);
                         }
+                        println!("{seq} => {ints:?}");
                     }
                     "sequence" => {
                         let seq = self.get_sequence(&e);
@@ -39,6 +40,7 @@ impl Translator {
                         if ints.len() == 0 && let Some(aut) = aut {
                             ints = aut.get_interpretations(seq.get(), None, &self.operations);
                         }
+                        println!("{seq} => {ints:?}");
                     }
                     x => panic!("error: unexpected operation statement: {x}")
                 }
@@ -118,7 +120,7 @@ impl Translator {
         if !self.automaton.register(signature.sequence.clone(), SequenceValue::Operation(op_id)) {
             return false // TODO: generate warning
         }
-        self.operations.push(Operation::new(op_id, signature, events, members, None));
+        self.operations.push(OperationTemplate::new(op_id, signature, events, members, None));
         true
     }
 
@@ -129,6 +131,7 @@ impl Translator {
             return Err(CompilationError::UnknownSequence(seq, self.get_location(event_node)));
         };
         let SequenceValue::Operation(x) = sv else {
+            // TODO: handle returning
             panic!("error: unexpected seq value {:?}", sv);
         };
         let event;

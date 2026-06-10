@@ -17,7 +17,7 @@ impl Translator {
         if !trigger.is_enabled() && label.is_empty() {
             return Ok(());     // This action does not have to be processed, since there is no way to activate it
         }
-        let a = Action::new(&label, events, trigger);
+        // let a = Action::new(label, events, trigger); // FIXME this is commented out
         self.actions.push(a);
         Ok(())
     }
@@ -48,40 +48,6 @@ impl Translator {
         }
         Ok(events)
     }
-
-    // fn sequence_to_event(&mut self, node: &Node) -> Event {
-    //     assert!(node.kind() == "sequence", "unexpected type of node {}", node.kind());
-    //     let mut params = vec![];
-    //     let mut seq = Sequence::new();
-    //     for n in get_children(node) {
-    //         match n.kind() {
-    //             "keyword" => {
-    //                 seq.push(Word::Keyword(self.text(&n).to_string()));
-    //             }
-    //             "value" => {
-    //                 let val = self.get_atomic_value(&n);
-    //                 if let Some(name) = self.get_variable_name(&n) {
-    //                     params.push(Variable::new(name, val.get_type()));
-    //                 } else {
-    //                     params.push(Variable::new_static(val.clone()));
-    //                 }
-    //                 seq.push(Word::Type(val.get_type()));
-    //             }
-    //             x => panic!("unexpected type in sequence: {x}")
-    //         }
-    //     }
-    //     let Some(sv) = self.automaton.run(seq.get()) else {
-    //         eprintln!("{} invalid sequence: {seq}", "error:".color(colorized::Colors::RedFg));
-    //         eprintln!("{}:", self.file_manager.current_file().expect("error: could not retrieve file"));
-    //         eprintln!(" line {}: {}", node.start_position().row+1, self.text(node));
-    //         exit(1);
-    //     };
-    //     if let SequenceValue::Operation(id) = sv {
-    //         self.operations[id].instantiate(params, &mut Context::empty(), &self.operations, &self.structures, &mut self.globals)
-    //     } else {
-    //         panic!("unexpected sequence value: {:?}", sv);
-    //     }
-    // }
 
     fn get_action_active(&self, node: &Node, i: &mut usize) -> bool {
         if self.text(node) != "!" {

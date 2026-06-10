@@ -4,17 +4,20 @@ use crate::translator::ast::AstBuilder;
 
 use super::Sequence;
 
+#[derive(Debug, Clone)]
 pub enum Time {
     Variable(String),
     Number(i64),
 }
 
+#[derive(Debug, Clone)]
 pub enum Unit {
     Frame,
     Second,
     Millisecond,
 }
 
+#[derive(Debug, Clone)]
 pub struct Trigger {
     pub onetime: bool,
     pub active: bool,
@@ -22,6 +25,7 @@ pub struct Trigger {
     pub unit: Unit,
 }
 
+#[derive(Debug)]
 pub struct Action {
     pub label: Option<String>,
     pub trigger: Trigger,
@@ -39,7 +43,7 @@ impl AstBuilder {
 
     pub fn get_trigger(&self, node: &Node) -> Trigger {
         self.expect_node_kind(node, "trigger");
-        let active = node.child_by_field_name("deactivated").is_some();
+        let active = node.child_by_field_name("deactivated").is_none();
         let onetime = self.get_repeat_quantifier(&node.child_by_field_name("onetime").unwrap());
         let time = node.child_by_field_name("step").map_or(Time::Number(1), |n| self.get_time(&n));
         let unit = self.get_unit(&node.child_by_field_name("unit").unwrap());

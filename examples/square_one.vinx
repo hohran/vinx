@@ -22,6 +22,7 @@ every frame draw $c rectangle from $p1 to $p2;
 every frame {
     move $p1 $d by $s;
     move $p2 $d by $s;
+    $x = $y + 1;
 }
 
 // staying still

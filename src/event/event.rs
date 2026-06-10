@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use crate::{action::ActionHandle, context::Context, event::{Operations, builtins::Builtin, operation::Operation}, variable::{Scope, Stack, Variable, VariableValue}};
+use crate::{action::ActionHandle, context::Context, event::{Operations, builtins::Builtin, operation::OperationTemplate}, variable::{Scope, Stack, Variable, VariableValue}};
 
 #[derive(Debug,Clone)]
 pub enum EventEffect {
@@ -82,7 +82,7 @@ impl Event {
         }
     }
 
-    fn push_operation_layer(&self, stack: &mut Stack, op: &Operation) {
+    fn push_operation_layer(&self, stack: &mut Stack, op: &OperationTemplate) {
         assert!(self.params.len() == op.get_params().len(), "error: incorrect number of parameters: expected {}, got {}", op.get_params().len(), self.params.len());
         // stack.pretty_println("== operation layer ==".to_string());
         stack.push();
@@ -95,7 +95,7 @@ impl Event {
         }
     }
 
-    fn pop_operation_layer(&mut self, stack: &mut Stack, op: &Operation) {
+    fn pop_operation_layer(&mut self, stack: &mut Stack, op: &OperationTemplate) {
         assert!(self.params.len() == op.get_params().len(), "error: incorrect number of parameters: expected {}, got {}", op.get_params().len(), self.params.len());
         let layer = stack.pop();
         // stack.pretty_println("-- operation layer --".to_string());
@@ -115,7 +115,7 @@ impl Event {
         }
     }
 
-    fn push_structure_layer(&self, stack: &mut Stack, op: &Operation) {
+    fn push_structure_layer(&self, stack: &mut Stack, op: &OperationTemplate) {
         if !self.active_struct {
             return;
         }
@@ -128,7 +128,7 @@ impl Event {
         }
     }
 
-    fn pop_structure_layer(&mut self, stack: &mut Stack, op: &Operation) {
+    fn pop_structure_layer(&mut self, stack: &mut Stack, op: &OperationTemplate) {
         if !self.active_struct {
             return;
         }
@@ -142,7 +142,7 @@ impl Event {
         }
     }
 
-    fn push_iterator_layer(&self, stack: &mut Stack, op: &Operation, iterators: &Vec<usize>) {
+    fn push_iterator_layer(&self, stack: &mut Stack, op: &OperationTemplate, iterators: &Vec<usize>) {
         // stack.pretty_println("== iterator layer ==".to_string());
         stack.push();
         for i in iterators {
@@ -162,7 +162,7 @@ impl Event {
         result
     }
 
-    fn push_iterated_values(&self, stack: &mut Stack, iterated_params: &Vec<bool>, op: &Operation, iteration: usize) {
+    fn push_iterated_values(&self, stack: &mut Stack, iterated_params: &Vec<bool>, op: &OperationTemplate, iteration: usize) {
         let param_values = self.get_param_values(stack);
         // update iterated values
         for i in 0..self.params.len() {

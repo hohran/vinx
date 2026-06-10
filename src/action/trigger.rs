@@ -1,4 +1,5 @@
 use crate::variable::{Stack, Variable, VariableType};
+use crate::translator::ast;
 
 // TODO: add milliseconds
 #[derive(Debug, PartialEq, Eq)]
@@ -22,6 +23,28 @@ impl Trigger {
     pub fn new(trigger_time: Variable, unit: TimeUnit, onetime: bool) -> Self {
         assert!(trigger_time.get_type() == VariableType::Int);
         Self { trigger_time, counter: 0, unit, onetime, enabled: true }
+    }
+
+    // Create Trigger from its ast representation
+    pub fn from(trigger: ast::Trigger, stack: &Stack) -> Self {
+        let time = match trigger.time {
+            ast::Time::Variable(name) => {
+                let Some (var) = stack.get_variable(&name) else {
+                    panic!("error: no such variable {name}") // TODO: friendlify
+                };
+                Variable::Named(name, var.get_type())
+            }
+            ast::Time::Number(n) => {
+                Variable::Static(crate::variable::VariableValue::Int(n as i32)) // TODO: make i64
+            }
+        };
+        let unit = match trigger.unit {
+            ast::Unit::Frame => TimeUnit::Frame,
+            ast::Unit::Second => panic!("error: time unit `second` not implemented"),
+            ast::Unit::Millisecond => panic!("error: time unit `millisecond` not implemented"),
+            // x => panic!("error: unexpected time unit `{x:?}`"),
+        };
+        Self { counter: 0, trigger_time: time, unit, onetime: trigger.onetime, enabled: trigger.active }
     }
 
     pub fn clear(&mut self) {

@@ -14,7 +14,9 @@ mod structures;
 mod value;
 mod actions;
 mod file_manager;
-mod ast;
+pub mod ast;
+
+pub mod parser;
 
 pub use translator::Translator;
 pub use translator::parse;

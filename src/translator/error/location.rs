@@ -43,6 +43,9 @@ impl Location {
     }
 
     pub fn get_source(&self) -> String {
+        if self.filepath == "" {
+            return "".to_string();
+        }
         let max_len = 80; // maximum number of characters in the printed string
         let max_row_width = ((self.range.end_point.row+1).ilog10()+1) as usize;
         let loc = self.get_loc(max_row_width) + "\n";

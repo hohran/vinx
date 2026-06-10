@@ -8,7 +8,7 @@ pub enum AstNode {
 }
 
 pub struct Ast {
-    nodes: Vec<AstNode>,
+    pub nodes: Vec<AstNode>,
 }
 
 impl Ast {

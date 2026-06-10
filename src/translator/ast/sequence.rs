@@ -4,6 +4,7 @@ use crate::translator::ast::AstBuilder;
 
 use super::Value;
 
+#[derive(Debug)]
 pub enum Word {
     Keyword(String),
     Value(Value)

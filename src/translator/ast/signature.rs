@@ -4,6 +4,7 @@ use crate::translator::ast::AstBuilder;
 
 pub type Iterator = (String, bool); // variable name, is_main
 
+#[derive(Debug)]
 pub enum Word {
     Keyword(String),
     Variable(String),

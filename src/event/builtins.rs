@@ -86,6 +86,13 @@ pub fn top_into(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Vari
     None
 }
 
+pub fn top(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
+    expect_param_count("top", params, 1);
+    let v = &params[0].get_value(stack).into_vec();
+    if v.is_empty() { panic!("error: empty vector"); }
+    Some(v[0].get_value(stack).clone())
+}
+
 pub fn rotate_vec(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
     expect_param_count("rotate", params, 3);
     let par1 = params[0].get_value(stack);

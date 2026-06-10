@@ -1,7 +1,7 @@
 use std::process::exit;
 
 use context::Context;
-use translator::parse;
+use translator::parser::parse;
 
 use crate::{action::{ActionHandle, process_action_handles}, video::Video};
 
