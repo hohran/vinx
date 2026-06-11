@@ -1,9 +1,10 @@
 use tree_sitter::Node;
 
 use super::*;
-use crate::{context::Context, event::{Event, OperationTemplate, Operations}, variable::{Variable, VariableValue}};
+use crate::{context::Context, event::{Operation, OperationTemplate, Operations}, variable::{Scope, Variable, VariableType, VariableValue}};
 
 pub type MemberDef = (String, SequenceValue, Vec<Variable>);
+pub type MemberDefNew = (String, VariableType);
 
 impl Translator {
     /// Parse operation defined by given nodes, and store all its interpretations in the Translator.
@@ -27,12 +28,12 @@ impl Translator {
                 let mut ints;
                 match e.kind() {
                     "var_definition" => {
-                        let (var_id,seq) = self.parse_member(&e, &mut member_names, member_name_constraint)?;
-                        ints = self.automaton.get_interpretations(seq.get(), Some(var_id), &self.operations);
-                        if ints.len() == 0 && let Some(aut) = aut {
-                            ints = aut.get_interpretations(seq.get(), Some(var_id), &self.operations);
-                        }
-                        println!("{seq} => {ints:?}");
+                        // let (var_id,seq) = self.parse_member(&e, &mut member_names, member_name_constraint)?;
+                        // ints = self.automaton.get_interpretations(seq.get(), Some(var_id), &self.operations);
+                        // if ints.len() == 0 && let Some(aut) = aut {
+                        //     ints = aut.get_interpretations(seq.get(), Some(var_id), &self.operations);
+                        // }
+                        // println!("{seq} => {ints:?}");
                     }
                     "sequence" => {
                         let seq = self.get_sequence(&e);
@@ -44,8 +45,8 @@ impl Translator {
                     }
                     x => panic!("error: unexpected operation statement: {x}")
                 }
-                if ints.is_empty() { return Ok((vec![],vec![])) }
-                interpretations.push(ints);
+                // if ints.is_empty() { return Ok((vec![],vec![])) }
+                // interpretations.push(ints);
             }
             Ok((member_names,interpretations))
         }
@@ -79,7 +80,7 @@ impl Translator {
     /// If the operation is a method, `structure` is set with respective id.
     /// 
     /// All parameters of the processed operation must be set to the correct type on the global stack.
-    pub fn get_operation_definition(&mut self, definition_node: &Node, structure: Option<StructureId>) -> Result<(Vec<Event>,Vec<MemberDef>), CompilationError> {
+    pub fn get_operation_definition(&mut self, definition_node: &Node, structure: Option<StructureId>) -> Result<(Vec<Operation>,Vec<MemberDef>), CompilationError> {
         let mut events = vec![];
         let mut members = vec![];
         for stmt in get_children(definition_node) {
@@ -114,18 +115,18 @@ impl Translator {
     }
 
     /// Add given operation to the global list and register its signature in the Translator's automaton.
-    pub fn add_operation(&mut self, signature: Signature, events: Vec<Event>, members: Vec<MemberDef>) -> bool {
+    pub fn add_operation(&mut self, signature: Signature, events: Vec<Operation>, members: Vec<MemberDef>) -> bool {
         let op_id = self.operations.len();
         // println!("adding operation '{signature}' => {op_id} ({})", signature.sequence);
         if !self.automaton.register(signature.sequence.clone(), SequenceValue::Operation(op_id)) {
             return false // TODO: generate warning
         }
-        self.operations.push(OperationTemplate::new(op_id, signature, events, members, None));
+        // self.operations.push(OperationTemplate::new(op_id, signature, events, members, None));
         true
     }
 
     /// Get event from a node.
-    pub fn get_event(&mut self, event_node: &Node) -> Result<Event, CompilationError> {
+    pub fn get_event(&mut self, event_node: &Node) -> Result<Operation, CompilationError> {
         let (seq, params) = self.get_sequence_with_params(event_node);
         let Some(sv) = self.automaton.run(seq.get()) else {
             return Err(CompilationError::UnknownSequence(seq, self.get_location(event_node)));

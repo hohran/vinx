@@ -1,7 +1,7 @@
 use tree_sitter::Node;
 
 use super::{get_all_children, get_children, Translator};
-use crate::{action::{Action, TimeUnit, Trigger}, event::Event, translator::error::CompilationError, variable::Variable};
+use crate::{action::{Action, TimeUnit, Trigger}, event::Operation, translator::error::CompilationError, variable::Variable};
 
 impl Translator {
     pub fn get_action_definition(&mut self, node: &Node) -> Result<(), CompilationError> {
@@ -18,7 +18,7 @@ impl Translator {
             return Ok(());     // This action does not have to be processed, since there is no way to activate it
         }
         // let a = Action::new(label, events, trigger); // FIXME this is commented out
-        self.actions.push(a);
+        // self.actions.push(a);
         Ok(())
     }
 
@@ -35,7 +35,7 @@ impl Translator {
         t
     }
 
-    fn get_action_events(&mut self, node: &Node) -> Result<Vec<Event>, CompilationError> {
+    fn get_action_events(&mut self, node: &Node) -> Result<Vec<Operation>, CompilationError> {
         self.expect_node_kind(node, "events");
         let mut events = vec![];
         let children = get_children(node);

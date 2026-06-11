@@ -28,20 +28,20 @@ impl Trigger {
     // Create Trigger from its ast representation
     pub fn from(trigger: ast::Trigger, stack: &Stack) -> Self {
         let time = match trigger.time {
-            ast::Time::Variable(name) => {
+            ast::Time::Variable(name, _) => {
                 let Some (var) = stack.get_variable(&name) else {
                     panic!("error: no such variable {name}") // TODO: friendlify
                 };
                 Variable::Named(name, var.get_type())
             }
-            ast::Time::Number(n) => {
+            ast::Time::Number(n, _) => {
                 Variable::Static(crate::variable::VariableValue::Int(n as i32)) // TODO: make i64
             }
         };
         let unit = match trigger.unit {
-            ast::Unit::Frame => TimeUnit::Frame,
-            ast::Unit::Second => panic!("error: time unit `second` not implemented"),
-            ast::Unit::Millisecond => panic!("error: time unit `millisecond` not implemented"),
+            ast::Unit::Frame(_) => TimeUnit::Frame,
+            ast::Unit::Second(_) => panic!("error: time unit `second` not implemented"), // TODO: friendlify
+            ast::Unit::Millisecond(_) => panic!("error: time unit `millisecond` not implemented"),
             // x => panic!("error: unexpected time unit `{x:?}`"),
         };
         Self { counter: 0, trigger_time: time, unit, onetime: trigger.onetime, enabled: trigger.active }

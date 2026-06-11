@@ -22,7 +22,7 @@ pub use translator::Translator;
 pub use translator::parse;
 pub use signature::Signature;
 pub use sequence::{SequenceValue, Sequence};
-pub use operations::MemberDef;
+pub use operations::MemberDefNew;
 pub use structures::StructureTemplate;
 
 use automata::Automaton;

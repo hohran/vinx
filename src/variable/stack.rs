@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::variable::{VariableType, VariableValue};
+use crate::{translator::MemberDefNew, variable::{VariableType, VariableValue}};
 
 pub type Scope = HashMap<String,VariableValue>;
 
@@ -130,6 +130,14 @@ impl Stack {
                 self.get_variable_mut(&elem_name).expect("error: nonexistent member of vector"),
         };
         *elem_value = new_value;
+    }
+
+    pub fn scope_from_members(members: &Vec<MemberDefNew>) -> Scope {
+        let mut scope = Scope::new();
+        for m in members {
+            scope.insert(m.0.clone(), m.1.default());
+        }
+        scope
     }
 }
 

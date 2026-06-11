@@ -1,6 +1,6 @@
-$v = 1; // velocity
+$v := 1; // velocity
 // -- row definition --
-$r1 = [
+$r1 := [
     (0,0),
     (50,0),
     (100,0),
@@ -14,7 +14,7 @@ $r1 = [
     (500,0),
     (550,0)
 ];
-$r2 = [
+$r2 := [
     (30,50),
     (80,50),
     (130,50),
@@ -28,7 +28,7 @@ $r2 = [
     (530,50),
     (580,50)
 ];
-$r3 = [
+$r3 := [
     (0,100),
     (50,100),
     (100,100),
@@ -42,7 +42,7 @@ $r3 = [
     (500,100),
     (550,100)
 ];
-$r4 = [
+$r4 := [
     (30,150),
     (80,150),
     (130,150),
@@ -56,7 +56,7 @@ $r4 = [
     (530,150),
     (580,150)
 ];
-$r5 = [
+$r5 := [
     (0,200),
     (50,200),
     (100,200),
@@ -70,7 +70,7 @@ $r5 = [
     (500,200),
     (550,200)
 ];
-$r6 = [
+$r6 := [
     (30,250),
     (80,250),
     (130,250),
@@ -84,7 +84,7 @@ $r6 = [
     (530,250),
     (580,250)
 ];
-$r7 = [
+$r7 := [
     (0,300),
     (50,300),
     (100,300),
@@ -98,7 +98,7 @@ $r7 = [
     (500,300),
     (550,300)
 ];
-$r8 = [
+$r8 := [
     (30,350),
     (80,350),
     (130,350),
@@ -112,27 +112,27 @@ $r8 = [
     (530,350),
     (580,350)
 ];
-$rows = [$r1,$r2,$r3,$r4,$r5,$r6,$r7,$r8];
+$rows := [$r1,$r2,$r3,$r4,$r5,$r6,$r7,$r8];
 
 // draw 20x20 square
-draw $color square at $p = {
-    $p2 = (0,0);
+draw $color square at $p := {
+    $p2 := (0,0);
     set $p2 to $p;
-    $s = 20;
+    $s := 20;
     move $p2 right by $s;
     move $p2 down by $s;
     draw $color rectangle from $p to $p2;
 }
 
 // used for drawing out row with changing colors
-draw [$x] square at [$p*] = draw $x square at $p;
+draw [$x] square at [$p*] := draw $x square at $p;
 // multiple rows, each with its color scheme
-draw [$z] square at [$p*] = draw $z square at $p;
+draw [$z] square at [$p*] := draw $z square at $p;
 
 // every odd row will have red/green squares
-$odd_row_colors = [red,green];
+$odd_row_colors := [red,green];
 // every even row will have blue/purple squares
-$even_row_colors = [blue,purple];
+$even_row_colors := [blue,purple];
 
 "draw"
 every frame {
@@ -140,9 +140,9 @@ every frame {
 }
 
 // function to move whole row
-move [$p] $d by $s = move $p $d by $s;
+move [$p] $d by $s := move $p $d by $s;
 // ** described bellow
-move [$p] [$d] by [$s] = move $p $d by $s;
+move [$p] [$d] by [$s] := move $p $d by $s;
 
 // // make the rows more aligned in the center:
 // at 1 frame {

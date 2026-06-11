@@ -201,6 +201,10 @@ pub fn move_pos_phase(context: &mut Context, stack: &mut Stack, params: &mut Vec
     None
 }
 
+pub fn get_value(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
+    Some(params[0].get_value(stack).clone())
+}
+
 pub fn move_pos(context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
     expect_param_count("restricted move", params, 3);
     if context.is_empty() { return None; }

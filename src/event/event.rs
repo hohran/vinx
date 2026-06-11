@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use crate::{action::ActionHandle, context::Context, event::{Operations, builtins::Builtin, operation::OperationTemplate}, variable::{Scope, Stack, Variable, VariableValue}};
+use crate::{action::ActionHandle, context::Context, event::{Event, Operations, builtins::Builtin, operation::OperationTemplate}, variable::{Scope, Stack, Variable, VariableValue}};
 
 #[derive(Debug,Clone)]
 pub enum EventEffect {
@@ -9,7 +9,7 @@ pub enum EventEffect {
 }
 
 #[derive(Debug,Clone)]
-pub struct Event {
+pub struct Operation {
     id: usize,
     params: Vec<Variable>,
     effect: EventEffect,
@@ -17,7 +17,7 @@ pub struct Event {
     active_struct: bool,
 }
 
-impl Event {
+impl Operation {
     pub fn new(id: usize, params: Vec<Variable>, effect: EventEffect, vars: Scope) -> Self {
         Self { id, params, effect, vars, active_struct: true }
     }
@@ -84,7 +84,6 @@ impl Event {
 
     fn push_operation_layer(&self, stack: &mut Stack, op: &OperationTemplate) {
         assert!(self.params.len() == op.get_params().len(), "error: incorrect number of parameters: expected {}, got {}", op.get_params().len(), self.params.len());
-        // stack.pretty_println("== operation layer ==".to_string());
         stack.push();
         for (n,v) in &self.vars {
             stack.add_variable(n.clone(), v.clone());

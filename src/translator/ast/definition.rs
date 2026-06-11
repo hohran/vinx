@@ -1,13 +1,16 @@
 use tree_sitter::Node;
 
-use super::{Sequence, Signature, AstBuilder, VarDefinition};
+use super::{Sequence, Signature, AstBuilder, VarDefinition, Assignment};
 
+#[derive(Debug)]
 pub enum Statement {
     Event(Sequence),
     VarDefinition(VarDefinition),
+    Assignment(Assignment),
     Definition(Definition),
 }
 
+#[derive(Debug)]
 pub struct Definition {
     pub signature: Signature,
     pub body: Vec<Statement>
@@ -30,6 +33,7 @@ impl AstBuilder {
                 "sequence" => stmts.push(Statement::Event(self.get_sequence(&s))),
                 "definition" => stmts.push(Statement::Definition(self.get_definition(&s))),
                 "var_definition" => stmts.push(Statement::VarDefinition(self.get_var_definition(&s))),
+                "assignment" => stmts.push(Statement::Assignment(self.get_var_assignment(&s))),
                 x => panic!("error: unexpected node kind for definition body: `{x}")
             }
         }

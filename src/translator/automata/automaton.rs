@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{ event::Operations, translator::{sequence::Sequence, type_constraints::TypeConstraints}};
+use crate::{ event::Operations, translator::{sequence::Sequence, type_constraints::TypeConstraints}, variable::VariableType};
 
 use super::{State, StateId, super::{SequenceValue, Word}};
 
@@ -50,9 +50,9 @@ impl Automaton {
 
     /// Performs a run of automaton over sequence `seq` and returns its value (if it exists).
     pub fn run(&self, seq: &Vec<Word>) -> Option<SequenceValue> {
-        if seq.len() == 1 && let Some(t) = seq[0].get_type() {
-            return Some(SequenceValue::Value(t.clone()));
-        }
+        // if seq.len() == 1 && let Some(t) = seq[0].get_type() {
+        //     return Some(SequenceValue::Value(t.clone()));
+        // }
         self.run_from(seq, 0, &TypeConstraints::new())
     }
 
@@ -88,24 +88,37 @@ impl Automaton {
 
     /// Get all possible interpretations of sequence `seq`.
     /// If this sequence is assigned to a variable, `ret_id` should be set to its id.
-    pub fn get_interpretations(&self, seq: &Vec<Word>, ret_id: Option<usize>, operations: &Operations) -> Vec<TypeConstraints> {
+    pub fn get_interpretations(&self, seq: &Vec<Word>, ret_var: Option<&VariableType>, operations: &Operations) -> Vec<TypeConstraints> {
         if seq.len() == 1 && let Word::Type(t) = &seq[0] {
-            if let Some(r) = ret_id {
+            if let Some(var_type) = ret_var {
+                // TODO: check if we shouldnt switch the intersection
+                let Some(prod) = var_type.intersect(t) else {
+                    return vec![];
+                };
                 let mut tc = TypeConstraints::new();
-                tc.intersect_var(r, t);
+                if let Some(var_binding) = var_type.get_binding() {
+                    tc.intersect_var(var_binding, &prod);
+                }
                 return vec![tc];
             } else {
                 return vec![TypeConstraints::new()];
             }
         }
-        self.get_interpretations_from(seq, 0, TypeConstraints::new(), TypeConstraints::new(), ret_id, operations)
+        self.get_interpretations_from(seq, 0, TypeConstraints::new(), TypeConstraints::new(), ret_var, operations)
     }
 
-    fn get_interpretations_from(&self, seq: &[Word], cur: StateId, mut cur_constraints: TypeConstraints, mut binding: TypeConstraints, ret_id: Option<usize>, operations: &Operations) -> Vec<TypeConstraints> {
+    fn get_interpretations_from(&self, seq: &[Word], cur: StateId, mut cur_constraints: TypeConstraints, mut binding: TypeConstraints, ret_var: Option<&VariableType>, operations: &Operations) -> Vec<TypeConstraints> {
         if seq.is_empty() {
             let Some(sv) = self.return_values.get(&cur) else { return vec![] };
-            if let Some(r) = ret_id {
-                cur_constraints.intersect_var(r, &sv.into_type(operations).with_inverted_binding());
+            if let Some(var_type) = ret_var {
+                let return_type = sv.into_type(operations).with_inverted_binding();
+                // TODO: check if we shouldnt switch the intersection
+                let Some(prod) = var_type.intersect(&return_type) else {
+                    return vec![];
+                };
+                if let Some(var_binding) = var_type.get_binding() {
+                    cur_constraints.intersect_var(var_binding, &prod);
+                }
             }
             cur_constraints.refresh_bindings();
             return vec![cur_constraints];
@@ -124,13 +137,13 @@ impl Automaton {
                             continue;
                         }
                     }
-                    out.append(&mut self.get_interpretations_from(rest, n, constraint_clone, binding_clone, ret_id, operations));
+                    out.append(&mut self.get_interpretations_from(rest, n, constraint_clone, binding_clone, ret_var, operations));
                 }
             }
             return out;
         } else {
             if let Some(next) = self.states[cur].apply(w, &mut binding) {
-                return self.get_interpretations_from(rest, next, cur_constraints, binding, ret_id, operations);
+                return self.get_interpretations_from(rest, next, cur_constraints, binding, ret_var, operations);
             } else {
                 return vec![];
             }
@@ -338,9 +351,12 @@ mod tests {
     #[test]
     fn test_run() {
         let la = (seq!("move" Pos Direction "by" Int), SequenceValue::Operation(1));
-        let a = Automaton::from(la);
+        let mut a = Automaton::from(la);
+        a.register(seq!("set" (Any(0)) "to" (Any(0))), SequenceValue::Operation(2));
         let s = seq!("move" Pos Direction "by" Int);
         let x = a.run(s.get());
         assert_eq!(x.unwrap(), SequenceValue::Operation(1));
+        let x = a.run(seq!("set" (Any(0)) "to" (Any(2))).get());
+        assert_eq!(x.unwrap(), SequenceValue::Operation(2));
     }
 }

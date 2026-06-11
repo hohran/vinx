@@ -4,5 +4,5 @@ mod event;
 mod event_action;
 
 pub use operation::{OperationTemplate, Operations};
-pub use event::{Event};
-pub use event_action::{EventAction};
+pub use event::{Operation, EventEffect};
+pub use event_action::{Event};

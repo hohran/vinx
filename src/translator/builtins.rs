@@ -31,6 +31,7 @@ macro_rules! builtins {
 /// Generate all builtin operations, note them in the automaton `aut` and return them.
 pub fn load_builtin_operations(aut: &mut Automaton) -> Vec<OperationTemplate> {
     let builtins: &[(Sequence, Option<VariableType>, Builtin)] = &builtins!(
+        ((Any(0))) => VariableType::Any(0), get_value;
         ("restricted" "move" Pos Direction "by" Int), move_pos;
         ("move" Pos Direction "by" Int), move_pos_phase;
         ("draw" Color "rectangle" "outline" "from" Pos "to" Pos), draw_rect_outline;

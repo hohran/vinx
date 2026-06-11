@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::{translator::{Sequence, SequenceValue, Signature, StructureTemplate, ast, automata::Automaton, error::CompilationError, parser::parser::Parser, sequence::OperationId, type_constraints::TypeConstraints, word::Word}, variable::{VariableType, VariableValue}};
+use crate::{translator::{Sequence, SequenceValue, Signature, StructureTemplate, ast, automata::Automaton, error::CompilationError, operations::MemberDef, parser::parser::Parser, sequence::OperationId, type_constraints::TypeConstraints, word::Word}, variable::VariableType};
 
 impl Parser {
     /// Parse structure with signature in `signature_node` and definition in `definition_node`.
@@ -36,12 +36,13 @@ impl Parser {
             match stmt {
                 ast::definition::Statement::VarDefinition(var_def) => {
                     let member_id = self.new_unresolved_variable();
+                    let member_type = VariableType::Any(member_id);
                     member_names.push(var_def.name.clone());
-                    if !self.globals.add_variable(var_def.name.clone(), VariableValue::Any(member_id)) {
+                    if !self.globals.add_variable(var_def.name.clone(), member_type.default()) {
                         return Err(CompilationError::TemporaryError(format!("duplicate member name in operation definition: {}", var_def.name)));
                     }
                     let (seq,_) = self.get_sequence(&var_def.value)?;
-                    self.update_structure_interpretations_with_var(&mut structure_interpretations, member_id, &seq);
+                    self.update_structure_interpretations_with_var(&mut structure_interpretations, &member_type, &seq);
                 }
                 ast::definition::Statement::Definition(d) => {
                     self.globals.push(); {
@@ -55,6 +56,7 @@ impl Parser {
                         methods.push((op,i));
                     } self.globals.pop();
                 }
+                ast::definition::Statement::Assignment(_) => panic!("error: assignments are not possible in structure definitions"), // TODO: friendlify
                 ast::definition::Statement::Event(_) => panic!("error: events are not possible in structure definitions"),
             }
         }
@@ -94,10 +96,10 @@ impl Parser {
     }
 
     /// Refine structure interpretations for a variable definition.
-    fn update_structure_interpretations_with_var(&mut self, structure_interpretations: &mut HashSet<TypeConstraints>, var_id: usize, rhs: &Sequence) {
+    fn update_structure_interpretations_with_var(&mut self, structure_interpretations: &mut HashSet<TypeConstraints>, var_type: &VariableType, rhs: &Sequence) {
         let mut new_structure_ints = HashSet::new();
         for struct_int in structure_interpretations.drain() {
-            for var_int in self.automaton.get_interpretations(rhs.get(), Some(var_id), &self.operations) {
+            for var_int in self.automaton.get_interpretations(rhs.get(), Some(var_type), &self.operations) {
                 if let Some(new_int) = struct_int.clone().intersect(var_int) {
                     new_structure_ints.insert(new_int);
                 }
@@ -125,6 +127,16 @@ impl Parser {
         Ok(())
     }
 
+    /// Get a member definition from an operation statement (e.g., $member = something).
+    pub fn get_member_definition(&mut self, var_def: &ast::VarDefinition) -> Result<MemberDef, CompilationError> {
+        let (seq,params) = self.get_sequence(&var_def.value)?;
+        let Some(sv) = self.automaton.run(seq.get()) else {
+            return Err(CompilationError::UnknownSequence(seq, self.placeholder_location()));
+        };
+        self.globals.update_variable(&var_def.name, sv.into_type(&self.operations).default());
+        Ok((var_def.name.clone(),sv.clone(),params))
+    }
+
     /// Create concrete methods for the structure given by `structure_id`.
     /// They are currently stored in `method_aut` for example as:
     ///  - `draw SelfReference at Pos`
@@ -142,10 +154,11 @@ impl Parser {
                 signature.set_structure_param(structure_id);
                 self.push_signature_to_stack(&signature);
                 let ast::definition::Statement::Definition(method) = &definition.body[method_id] else {
-                    panic!("error: is not mehod"); // TODO: make nicer
+                    panic!("error: is not method"); // TODO: make nicer
                 };
-                let (events, op_members) = self.get_operation_definition(method, Some(structure_id))?;
-                self.add_operation(signature, events, op_members);
+                let events = self.get_operation_definition(method, Some(structure_id))?;
+                let member_names = self.get_operation_members(method);
+                self.add_operation(signature, events, self.get_members(&member_names));
             } self.globals.pop();
         }
         Ok(())

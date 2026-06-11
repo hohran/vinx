@@ -3,15 +3,15 @@
 
 use crate::{action::ActionHandle, context::Context, event::Operations, variable::{Stack, VariableValue}};
 
-use super::Event;
+use super::Operation;
 
 #[derive(Debug, Clone)]
-pub enum EventAction {
-    Call(Event),
-    Assignment(String, Event),
+pub enum Event {
+    Call(Operation),
+    Assignment(String, Operation),
 }
 
-impl EventAction {
+impl Event {
     pub fn process(&mut self, context: &mut Context, stack: &mut Stack, action_handles: &mut Vec<ActionHandle>, operations: &Operations) -> Option<VariableValue> {
         match self {
             Self::Call(event) => event.process(context, stack, action_handles, operations),

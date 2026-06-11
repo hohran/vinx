@@ -1,6 +1,6 @@
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 
-use crate::{context::Context, event::{builtins::Builtin, event::{Event, EventEffect}}, translator::{MemberDef, SequenceValue, Signature, StructureTemplate, Sequence}, variable::{Scope, Stack, Variable, VariableType, VariableValue}};
+use crate::{context::Context, event::{Event, builtins::Builtin, event::{Operation, EventEffect}}, translator::{MemberDefNew, Sequence, Signature, StructureTemplate}, variable::{Scope, Stack, Variable, VariableType}};
 
 pub type Operations = Vec<OperationTemplate>;
 
@@ -9,12 +9,12 @@ pub struct OperationTemplate {
     id: usize,
     pub signature: Signature,
     effect: EventEffect,
-    members: Vec<(String,SequenceValue,Vec<Variable>)>,
+    members: Vec<MemberDefNew>,
     result: Option<VariableType>,
 }
 
 impl OperationTemplate {
-    pub fn new(id: usize, signature: Signature, events: Vec<Event>, members: Vec<MemberDef>, result: Option<VariableType>) -> Self {
+    pub fn new(id: usize, signature: Signature, events: Vec<Event>, members: Vec<MemberDefNew>, result: Option<VariableType>) -> Self {
         Self { id, effect: EventEffect::Composed(events), members, signature, result }
     }
 
@@ -44,41 +44,42 @@ impl OperationTemplate {
         self.signature.structure_param_id.as_ref()
     }
 
-    pub fn instantiate(&self, params: Vec<Variable>, context: &mut Context, operations: &Operations, structures: &Vec<StructureTemplate>, stack: &mut Stack) -> Event {
-        // println!("instantiate op {} with {params:?}", self.id);
-        if self.members.is_empty() {
-            return Event::new(self.id, params, self.effect.clone(), Scope::new());
-        }
-        stack.push();
-        for i in 0..params.len() {
-            let name = self.signature.params[i].clone();
-            let value = params[i].get_value(stack).clone();
-            stack.add_variable(name, value);
-        }
-        let mut members = Scope::new();
-        // TODO: refactor
-        for (name,val,ps) in &self.members {
-            let member_val = match val {
-                SequenceValue::Operation(id) => {
-                    operations[*id]
-                        .instantiate(ps.clone(), context, operations, structures, stack)
-                        .process(context, stack, &mut vec![], operations)
-                        .expect("error: did not have value")
-                }
-                SequenceValue::Structure(id) => {
-                    let val = structures[*id].instantiate(ps.clone(), context, operations, structures, stack);
-                    VariableValue::Structure(val)
-                }
-                SequenceValue::Value(_) => {
-                    assert_eq!(ps.len(), 1, "only 1 param for value");
-                    ps[0].get_value(stack).clone()
-                }
-            };
-            members.insert(name.clone(), member_val.clone());
-            stack.add_variable(name.clone(), member_val);
-        }
-        stack.pop();
-        Event::new(self.id, params, self.effect.clone(), members)
+    pub fn instantiate(&self, params: Vec<Variable>, context: &mut Context, operations: &Operations, structures: &Vec<StructureTemplate>, stack: &mut Stack) -> Operation {
+        // // println!("instantiate op {} with {params:?}", self.id);
+        // if self.members.is_empty() {
+        //     return Event::new(self.id, params, EventEffect::Composed(self.events.clone()), Scope::new());
+        // }
+        // stack.push();
+        // for i in 0..params.len() {
+        //     let name = self.signature.params[i].clone();
+        //     let value = params[i].get_value(stack).clone();
+        //     stack.add_variable(name, value);
+        // }
+        // let mut members = Scope::new();
+        // // TODO: refactor
+        // for (name,val,ps) in &self.members {
+        //     let member_val = match val {
+        //         SequenceValue::Operation(id) => {
+        //             operations[*id]
+        //                 .instantiate(ps.clone(), context, operations, structures, stack)
+        //                 .process(context, stack, &mut vec![], operations)
+        //                 .expect("error: did not have value")
+        //         }
+        //         SequenceValue::Structure(id) => {
+        //             let val = structures[*id].instantiate(ps.clone(), context, operations, structures, stack);
+        //             VariableValue::Structure(val)
+        //         }
+        //         SequenceValue::Value(_) => {
+        //             assert_eq!(ps.len(), 1, "only 1 param for value");
+        //             ps[0].get_value(stack).clone()
+        //         }
+        //     };
+        //     members.insert(name.clone(), member_val.clone());
+        //     stack.add_variable(name.clone(), member_val);
+        // }
+        // stack.pop();
+        // if self.events.len() == 1 && matches!(self.events[0], EventAction::Call())
+        Operation::new(self.id, params, self.effect.clone(), Stack::scope_from_members(&self.members))
     }
 
     pub fn push_to_stack(&self, params: &Vec<Variable>, variables: &Scope, stack: &mut Stack) {
@@ -100,5 +101,19 @@ impl OperationTemplate {
 
     pub fn get_iterated_param_name(&self, param_index: usize) -> String {
         format!("{}!", self.signature.params[param_index])
+    }
+}
+
+impl Display for OperationTemplate {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.signature.params.len() == 0 {
+            write!(f, "{}", self.signature.sequence)?;
+        } else {
+            write!(f, "{}", self.signature)?;
+        }
+        if let Some(return_type) = &self.result {
+            write!(f, " => {return_type}")?;
+        };
+        Ok(())
     }
 }

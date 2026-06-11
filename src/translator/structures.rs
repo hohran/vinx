@@ -3,7 +3,7 @@ use std::{collections::HashSet};
 use tree_sitter::Node;
 
 use super::*;
-use crate::{context::Context, event::Operations, variable::{Scope, Stack, Structure, Variable, VariableType, VariableValue}};
+use crate::{context::Context, event::Operations, translator::operations::MemberDef, variable::{Scope, Stack, Structure, Variable, VariableType, VariableValue}};
 
 // TODO refactor
 #[derive(Debug)]
@@ -11,7 +11,7 @@ pub struct StructureTemplate {
     id: usize,
     param_names: Vec<String>,
     param_types: Vec<VariableType>,
-    members: Vec<(String, SequenceValue, Vec<Variable>)>,
+    members: Vec<MemberDef>,
 }
 
 impl StructureTemplate {
@@ -191,11 +191,11 @@ impl Translator {
     fn update_structure_interpretations_with_var(&mut self, structure_interpretations: &mut HashSet<TypeConstraints>, var_id: usize, rhs: &Sequence) {
         let mut new_structure_ints = HashSet::new();
         for struct_int in structure_interpretations.drain() {
-            for var_int in self.automaton.get_interpretations(rhs.get(), Some(var_id), &self.operations) {
-                if let Some(new_int) = struct_int.clone().intersect(var_int) {
-                    new_structure_ints.insert(new_int);
-                }
-            }
+            // for var_int in self.automaton.get_interpretations(rhs.get(), Some(var_id), &self.operations) {
+            //     if let Some(new_int) = struct_int.clone().intersect(var_int) {
+            //         new_structure_ints.insert(new_int);
+            //     }
+            // }
         }
         *structure_interpretations = new_structure_ints;
     }

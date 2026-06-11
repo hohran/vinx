@@ -1,4 +1,4 @@
-use crate::{action::Action, event::Operations, translator::{StructureTemplate, ast::{Ast, AstNode}, automata::Automaton, builtins::{load_builtin_operations, load_builtin_structures}, error::{CompilationError, Location, Warning}, file_manager::FileManager, word::Word}, variable::{Stack, Variable}};
+use crate::{action::Action, event::Operations, translator::{StructureTemplate, ast::{Ast, AstNode}, automata::Automaton, builtins::{load_builtin_operations, load_builtin_structures}, error::{CompilationError, Location, Warning}, file_manager::FileManager}, variable::Stack};
 
 pub struct Parser {
     pub globals: Stack,
