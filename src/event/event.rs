@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use crate::{action::ActionHandle, context::Context, event::{Event, Operations, builtins::Builtin, operation::OperationTemplate}, variable::{Scope, Stack, Variable, VariableValue}};
+use crate::{action::ActionHandle, context::Context, event::{Event, Operations, builtins::Builtin, operation::OperationTemplate}, variable::{Scope, Stack, Variable, VariableType, VariableValue}};
 
 #[derive(Debug,Clone)]
 pub enum EventEffect {
@@ -15,11 +15,16 @@ pub struct Operation {
     effect: EventEffect,
     vars: Scope,
     active_struct: bool,
+    return_type: Option<VariableType>,
 }
 
 impl Operation {
-    pub fn new(id: usize, params: Vec<Variable>, effect: EventEffect, vars: Scope) -> Self {
-        Self { id, params, effect, vars, active_struct: true }
+    pub fn new(id: usize, params: Vec<Variable>, effect: EventEffect, return_type: Option<VariableType>, vars: Scope) -> Self {
+        Self { id, params, effect, vars, active_struct: true, return_type }
+    }
+
+    pub fn get_return_type(&self) -> Option<&VariableType> {
+        self.return_type.as_ref()
     }
 
     pub fn get_id(&self) -> usize {
@@ -38,7 +43,7 @@ impl Operation {
     }
 
     fn process_composed(&mut self, context: &mut Context, stack: &mut Stack, operations: &Operations, action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
-        let op = &operations[self.id];
+        let op = &operations[self.id].get();
         let iterators = op.get_iterators();
         let operands = op.get_params();
         self.push_structure_layer(stack, op); // having layers in this order makes sure that method parameters override structure members

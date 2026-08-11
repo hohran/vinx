@@ -1,9 +1,7 @@
 use std::fmt::Display;
 
-use tree_sitter::Node;
-
-use super::{Word, get_children, Sequence, Translator};
-use crate::{translator::{ast, error::CompilationError}, variable::{VariableType, VariableValue}};
+use super::{Word, Sequence};
+use crate::variable::VariableType;
 
 /// Structure for handling signatures of operations and structures.
 ///
@@ -25,9 +23,6 @@ impl Signature {
     pub fn from(seq: Sequence) -> Self {
         Self { sequence: seq, params: vec![], iterators: vec![], structure_param_id: None }
     }
-
-    // pub fn from_ast_signature(signature: ast::Signature) -> Self {
-    // }
 
     /// For a method signature, set the id of the bound structure parameter
     pub fn set_structure_param(&mut self, structure_id: usize) {
@@ -87,72 +82,5 @@ impl Display for Signature {
             }
         }
         Ok(())
-    }
-}
-
-impl Translator {
-    /// Push every `signature` parameter to the stack, assigning it the default value of its type.
-    pub fn push_signature_to_stack(&mut self, signature: &Signature) {
-        signature.foreach(|p,t| if !self.globals.add_variable(p.to_string(), t.default()) { panic!("error: unexpected redeclaration of variables") } );
-    }
-
-    /// Update the type of every `signature` parameter on the stack.
-    pub fn update_stack_with_signature(&mut self, signature: &Signature) {
-        signature.foreach(|p,t| self.globals.update_variable(p, t.default()));
-    }
-
-    /// Get the signature represented by `node`.
-    ///
-    /// !!! IMPORTANT: this function automatically pushes the parameters to the stack, it is advised
-    /// to create a dedicated scope beforehand !!!
-    pub fn get_signature(&mut self, node: &Node) -> Result<Signature, CompilationError> {
-        self.expect_node_kind(node, "signature");
-        let structure_ref_name = "$self";
-        let mut sequence = Sequence::new();
-        let mut params = vec![];
-        let mut has_main_iterator = false;
-        let mut iterators = vec![];
-        let mut structure_param_id = None;
-        for word_node in get_children(node) {
-            match word_node.kind() {
-                "keyword" => sequence.push(Word::Keyword(self.text(&word_node).to_string())),
-                "variable" => {
-                    let param_id = self.new_unresolved_variable();
-                    let param_name = self.get_variable_name(&word_node).unwrap();  // variable always has a valid name
-                    sequence.push(Word::Type(VariableType::Any(param_id)));
-                    params.push(param_name.to_string());
-                    if param_name == structure_ref_name {
-                        assert!(structure_param_id.is_none());  // TODO: friendlify
-                        structure_param_id = Some(params.len()-1);
-                    }
-                    self.globals.add_variable(param_name.to_string(), VariableValue::Any(param_id));
-                }
-                "iterator" => {
-                    let var_node = word_node.child_by_field_name("variable").expect("error: iterator without variable field");
-                    self.expect_node_kind(&var_node, "variable");
-                    let param_id = self.new_unresolved_variable();
-                    let param_name = self.get_variable_name(&var_node).unwrap();  // variable always has a valid name
-                    params.push(param_name.to_string());
-                    if param_name == structure_ref_name {
-                        assert!(structure_param_id.is_none());  // TODO: friendlify
-                        structure_param_id = Some(params.len()-1);
-                    }
-                    sequence.push(Word::Type(VariableType::Any(param_id)));
-                    self.globals.add_variable(param_name.to_string(), VariableValue::Any(param_id));
-                    let var_id = self.globals.top().len()-1;
-                    if word_node.child_by_field_name("main").is_some() {    // main iterator
-                        if has_main_iterator {
-                            return Err(CompilationError::MultipleMainIterators(self.get_location(node)));
-                        }
-                        has_main_iterator = true;
-                        iterators.insert(0, var_id);
-                    } else {
-                        iterators.push(var_id);
-                    }
-                }
-                x => panic!("error: unexpected type {x} in sequence")
-            }
-        }
-        Ok(Signature { sequence, params, iterators, structure_param_id })
     }
 }

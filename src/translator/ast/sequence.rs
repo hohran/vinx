@@ -1,16 +1,16 @@
 use tree_sitter::Node;
 
-use crate::translator::ast::AstBuilder;
+use crate::translator::ast::{AstBuilder, Range};
 
 use super::Value;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Word {
     Keyword(String),
     Value(Value)
 }
 
-pub type Sequence = Vec<Word>;
+pub type Sequence = Vec<(Word, Range)>;
 
 impl AstBuilder {
     pub fn get_sequence(&self, node: &Node) -> Sequence {
@@ -19,8 +19,8 @@ impl AstBuilder {
         for word in node.children(&mut node.walk()) {
             match word.kind() {
                 "comment" => {}
-                "keyword" => seq.push(Word::Keyword(self.get_keyword(&word))),
-                "value" => seq.push(Word::Value(self.get_value(&word))),
+                "keyword" => seq.push((Word::Keyword(self.get_keyword(&word)), Range::from(&word))),
+                "value" => seq.push((Word::Value(self.get_value(&word)), Range::from(&word))),
                 x => panic!("error: unexpected node kind in sequence {node:?}: {x}"),
             }
         }

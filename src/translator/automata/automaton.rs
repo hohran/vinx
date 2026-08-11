@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{ event::Operations, translator::{sequence::Sequence, type_constraints::TypeConstraints}, variable::VariableType};
+use crate::{ event::Operations, translator::{sequence::{Sequence, SequenceType}, type_constraints::TypeConstraints}, variable::VariableType};
 
 use super::{State, StateId, super::{SequenceValue, Word}};
 
@@ -11,11 +11,13 @@ use super::{State, StateId, super::{SequenceValue, Word}};
 pub struct Automaton {
     states: Vec<State>,
     return_values: HashMap<StateId, SequenceValue>,
+    loaded: HashMap<SequenceType, usize>,
 }
 
 impl Automaton {
     pub fn new() -> Self {
-        Self { states: vec![State::new()], return_values: HashMap::new() }
+        let loaded = HashMap::from([(SequenceType::Operation, 0), (SequenceType::Structure, 0)]);
+        Self { states: vec![State::new()], return_values: HashMap::new(), loaded }
     }
 
     /// Creates a new state without any transitions and returns its id.
@@ -28,7 +30,7 @@ impl Automaton {
     /// Registers a return value for given sequence.
     /// This function will return `false`, if such sequence is already registered.
     /// _Theoretically speaking, this operation is equivalent to an automata union._
-    pub fn register(&mut self, seq: Sequence, val: SequenceValue) -> bool {
+    pub fn register(&mut self, seq: Sequence, seq_type: SequenceType) -> bool {
         let mut cur_state = 0;
         for transition in seq.into_vec() {
             let next_state = self.states[cur_state].use_transition(&transition);
@@ -44,7 +46,9 @@ impl Automaton {
         if self.return_values.contains_key(&cur_state) {
             return false;
         }
-        self.return_values.insert(cur_state, val);
+        let seq_id = self.loaded.get_mut(&seq_type).expect("error: sequence type without set count");
+        self.return_values.insert(cur_state, seq_type.to_value(*seq_id));
+        *seq_id += 1;
         true
     }
 
@@ -173,27 +177,58 @@ impl Automaton {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
+    use crate::event::{OperationTemplate, OperationTemplateEnum};
+    use crate::event::builtins::Builtin;
     use crate::variable::VariableType;
 
-    use super::{Automaton, State};
+    use super::{Automaton};
     use super::Word;
     use super::SequenceValue;
-    use crate::translator::sequence::Sequence;
+    use crate::translator::sequence::{Sequence, SequenceType};
     use crate::{seq,word,vtype};
+    use crate::event::builtins::*;
+
+    macro_rules! builtin {
+        (($($w:tt)+), $f:expr, $r:expr) => {
+            ((seq!($($w)+)), Some($r), $f)
+        };
+
+        (($($w:tt)+), $f:expr) => {
+            ((seq!($($w)+)), None, $f)
+        };
+    }
+
+    macro_rules! builtins {
+        (
+            $(
+                ($($w:tt)+) $(=> $r:expr)?, $f:expr
+            );* $(;)?
+        ) => {
+            [
+                $(
+                    builtin!(($($w)+), $f $(, $r)?)
+                ),*
+            ]
+        };
+    }
+
+    fn load_operations(builtins: &[(Sequence, Option<VariableType>, Builtin)]) -> (Automaton, Vec<OperationTemplateEnum>) {
+        let mut aut = Automaton::new();
+        let mut ops = vec![];
+        for (i,(seq,ret,op)) in builtins.into_iter().enumerate() {
+            if !aut.register(seq.clone(), SequenceType::Operation) {
+                panic!("error: union did not create any new states");
+            }
+            ops.push(OperationTemplateEnum::Standard(OperationTemplate::from_builtin(i, seq.clone(), *op, ret.clone())));
+        }
+        (aut,ops)
+    }
 
     impl Automaton {
-        pub fn from(la: (Sequence,SequenceValue)) -> Self {
-            let mut states = vec![State::new()];
-            for t in la.0.into_vec() {
-                let state_count = states.len();
-                let cur_state = state_count-1;
-                states.push(State::new());
-                states[cur_state].add_transition(t, state_count);
-            }
-            let mut return_values = HashMap::new();
-            return_values.insert(states.len()-1, la.1);
-            Self { states, return_values }
+        pub fn from(la: (Sequence,SequenceType)) -> Self {
+            let mut s = Self::new();
+            s.register(la.0, la.1);
+            s
         }
         pub fn len(&self) -> usize {
             self.states.len()
@@ -202,83 +237,83 @@ mod tests {
 
     #[test]
     fn test_automaton_run() {
-        let la = (seq!("a" [Int] "b"), SequenceValue::Operation(1));
+        let la = (seq!("a" [Int] "b"), SequenceType::Operation);
         let a = Automaton::from(la);
         assert_eq!(a.len(), 4);
-        assert_eq!(a.run(seq!("a" [Int] "b").get()), Some(SequenceValue::Operation(1)));
+        assert_eq!(a.run(seq!("a" [Int] "b").get()), Some(SequenceValue::Operation(0)));
         assert_eq!(a.run(seq!("a" [Pos] "b").get()), None);
         assert_eq!(a.run(seq!("a" [Int] "c").get()), None);
     }
 
     #[test]
     fn test_automaton_union() {
-        let la1 = (seq!("a" [Int] "b"), SequenceValue::Operation(1));
-        let la2 = (seq!("a" Pos "c"), SequenceValue::Operation(2));
+        let la1 = (seq!("a" [Int] "b"), SequenceType::Operation);
+        let la2 = (seq!("a" Pos "c"), SequenceType::Operation);
         let mut a = Automaton::from(la1);
         assert_eq!(a.len(), 4);
         a.register(la2.0,la2.1);
         assert_eq!(a.len(), 6);
-        assert_eq!(a.run(seq!("a" [Int] "b").get()), Some(SequenceValue::Operation(1)));
-        assert_eq!(a.run(seq!("a" Pos "c").get()), Some(SequenceValue::Operation(2)));
+        assert_eq!(a.run(seq!("a" [Int] "b").get()), Some(SequenceValue::Operation(0)));
+        assert_eq!(a.run(seq!("a" Pos "c").get()), Some(SequenceValue::Operation(1)));
         assert_eq!(a.run(seq!("a" Pos "b").get()), None);
     }
 
     #[test]
     fn test_automaton_priority_choice() {
-        let la1 = (seq!(a Int b), SequenceValue::Operation(1));
-        let la2 = (seq!(a (Any(0)) b), SequenceValue::Operation(2));
+        let la1 = (seq!(a Int b), SequenceType::Operation);
+        let la2 = (seq!(a (Any(0)) b), SequenceType::Operation);
         let mut a = Automaton::from(la1);
         assert_eq!(a.len(), 4);
         a.register(la2.0,la2.1);
         assert_eq!(a.len(), 6);
         assert_eq!(
             a.run(seq!(a Int b).get()),
-            Some(SequenceValue::Operation(1))
+            Some(SequenceValue::Operation(0))
         );
     }
 
     #[test]
     fn test_automaton_priority_choice_vec() {
-        let la1 = (seq!("a" [Int] "b"), SequenceValue::Operation(1));
-        let la2 = (seq!("a" (Any(0)) "b"), SequenceValue::Operation(2));
-        let la3 = (seq!("a" [Any(0)] "b"), SequenceValue::Operation(3));
+        let la1 = (seq!("a" [Int] "b"), SequenceType::Operation);
+        let la2 = (seq!("a" (Any(0)) "b"), SequenceType::Operation);
+        let la3 = (seq!("a" [Any(0)] "b"), SequenceType::Operation);
         let mut a = Automaton::from(la1);
         assert_eq!(a.len(), 4);
         a.register(la2.0,la2.1);
         assert_eq!(a.len(), 6);
         a.register(la3.0,la3.1);
         assert_eq!(a.len(), 8);
-        assert_eq!(a.run(seq!("a" [Int] "b").get()), Some(SequenceValue::Operation(1)));
-        assert_eq!(a.run(seq!("a" Int "b").get()), Some(SequenceValue::Operation(2)));
-        assert_eq!(a.run(seq!("a" [Pos] "b").get()), Some(SequenceValue::Operation(3)));
+        assert_eq!(a.run(seq!("a" [Int] "b").get()), Some(SequenceValue::Operation(0)));
+        assert_eq!(a.run(seq!("a" Int "b").get()), Some(SequenceValue::Operation(1)));
+        assert_eq!(a.run(seq!("a" [Pos] "b").get()), Some(SequenceValue::Operation(2)));
     }
 
     #[test]
     fn test_automaton_backtrace_small() {
-        let la1 = (seq!(a Int b), SequenceValue::Operation(1));
-        let la2 = (seq!(a (Any(0)) c), SequenceValue::Operation(2));
+        let la1 = (seq!(a Int b), SequenceType::Operation);
+        let la2 = (seq!(a (Any(0)) c), SequenceType::Operation);
         let mut a = Automaton::from(la1);
         a.register(la2.0,la2.1);
-        assert_eq!(a.run(seq!(a Int c).get()), Some(SequenceValue::Operation(2)));
+        assert_eq!(a.run(seq!(a Int c).get()), Some(SequenceValue::Operation(1)));
     }
 
     #[test]
     fn test_automaton_backtrace_large() {
-        let la1 = (seq!("a" Int "a" Int "a"), SequenceValue::Operation(1));
-        let la2 = (seq!("a" (Any(0)) "a" Pos "a"), SequenceValue::Operation(2));
-        let la3 = (seq!("a" (Any(0)) "a" Int "a"), SequenceValue::Operation(3));
-        let la4 = (seq!("a" Int "a" (Any(0)) "b"), SequenceValue::Operation(4));
-        let la5 = (seq!("a" Int "a" Pos "b"), SequenceValue::Operation(5));
+        let la1 = (seq!("a" Int "a" Int "a"), SequenceType::Operation);
+        let la2 = (seq!("a" (Any(0)) "a" Pos "a"), SequenceType::Operation);
+        let la3 = (seq!("a" (Any(0)) "a" Int "a"), SequenceType::Operation);
+        let la4 = (seq!("a" Int "a" (Any(0)) "b"), SequenceType::Operation);
+        let la5 = (seq!("a" Int "a" Pos "b"), SequenceType::Operation);
         let mut a = Automaton::from(la1);
         a.register(la2.0,la2.1);
         a.register(la3.0,la3.1);
         a.register(la4.0,la4.1);
         a.register(la5.0,la5.1);
-        assert_eq!(a.run(seq!("a" Int "a" Int "a").get()), Some(SequenceValue::Operation(1)));
-        assert_eq!(a.run(seq!("a" Int "a" Pos "a").get()), Some(SequenceValue::Operation(2)));
-        assert_eq!(a.run(seq!("a" Color "a" Int "a").get()), Some(SequenceValue::Operation(3)));
-        assert_eq!(a.run(seq!("a" Int "a" Int "b").get()), Some(SequenceValue::Operation(4)));
-        assert_eq!(a.run(seq!("a" Int "a" Pos "b").get()), Some(SequenceValue::Operation(5)));
+        assert_eq!(a.run(seq!("a" Int "a" Int "a").get()), Some(SequenceValue::Operation(0)));
+        assert_eq!(a.run(seq!("a" Int "a" Pos "a").get()), Some(SequenceValue::Operation(1)));
+        assert_eq!(a.run(seq!("a" Color "a" Int "a").get()), Some(SequenceValue::Operation(2)));
+        assert_eq!(a.run(seq!("a" Int "a" Int "b").get()), Some(SequenceValue::Operation(3)));
+        assert_eq!(a.run(seq!("a" Int "a" Pos "b").get()), Some(SequenceValue::Operation(4)));
     }
 
     #[test]
@@ -291,7 +326,7 @@ mod tests {
         ];
         let mut a = Automaton::new();
         for i in 0..ops.len() {
-            let la = (ops[i].clone(), SequenceValue::Operation(i));
+            let la = (ops[i].clone(), SequenceType::Operation);
             a.register(la.0,la.1);
         }
         let paths = a.get_interpretations(seq!("a" (Any(0)) "b").get(), None, &vec![]);
@@ -307,7 +342,7 @@ mod tests {
         ];
         let mut a = Automaton::new();
         for i in 0..ops.len() {
-            let la = (ops[i].clone(), SequenceValue::Operation(i));
+            let la = (ops[i].clone(), SequenceType::Operation);
             a.register(la.0,la.1);
         }
         let paths = a.get_interpretations(seq!(a (Any(0)) b (Any(0)) c).get(), None, &vec![]);
@@ -320,7 +355,7 @@ mod tests {
         ];
         let mut a = Automaton::new();
         for i in 0..ops.len() {
-            let la = (ops[i].clone(), SequenceValue::Operation(i));
+            let la = (ops[i].clone(), SequenceType::Operation);
             a.register(la.0,la.1);
         }
         let paths = a.get_interpretations(seq!(a (Any(0)) b).get(), None, &vec![]);
@@ -337,7 +372,7 @@ mod tests {
         ];
         let mut a = Automaton::new();
         for i in 0..ops.len() {
-            let la = (ops[i].clone(), SequenceValue::Operation(i));
+            let la = (ops[i].clone(), SequenceType::Operation);
             a.register(la.0,la.1);
         }
         let paths = a.get_interpretations(seq!(a [Any(0)] (Any(0))).get(), None, &vec![]);
@@ -346,17 +381,28 @@ mod tests {
         assert_eq!(paths.len(), 0);
         let paths = a.get_interpretations(seq!(a [Int] Color).get(), None, &vec![]);
         assert_eq!(paths, vec![]);
+        // 5)
+        let builtins: &[(Sequence, Option<VariableType>, Builtin)] = &builtins!(
+            ("a" Int) => VariableType::Int, add_to;
+            ("a" [Int]) => VariableType::Int, add_to;
+            ("a" Pos) => VariableType::Pos, add_to;
+            );
+        let (aut, ops) = load_operations(builtins);
+        let seq = seq!(a (Any(0)));
+        assert_eq!(aut.get_interpretations(seq.get(), None, &ops).len(), 3);
+        assert_eq!(aut.get_interpretations(seq.get(), Some(&VariableType::Any(1)), &ops).len(), 3);
+        assert_eq!(aut.get_interpretations(seq.get(), Some(&VariableType::Int), &ops).len(), 2);
     }
 
     #[test]
     fn test_run() {
-        let la = (seq!("move" Pos Direction "by" Int), SequenceValue::Operation(1));
+        let la = (seq!("move" Pos Direction "by" Int), SequenceType::Operation);
         let mut a = Automaton::from(la);
-        a.register(seq!("set" (Any(0)) "to" (Any(0))), SequenceValue::Operation(2));
+        a.register(seq!("set" (Any(0)) "to" (Any(0))), SequenceType::Operation);
         let s = seq!("move" Pos Direction "by" Int);
         let x = a.run(s.get());
+        assert_eq!(x.unwrap(), SequenceValue::Operation(0));
+        let x = a.run(seq!("set" Int "to" Int).get());
         assert_eq!(x.unwrap(), SequenceValue::Operation(1));
-        let x = a.run(seq!("set" (Any(0)) "to" (Any(2))).get());
-        assert_eq!(x.unwrap(), SequenceValue::Operation(2));
     }
 }

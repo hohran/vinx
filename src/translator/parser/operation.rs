@@ -1,28 +1,83 @@
-// TODO: handle case:
-//  operation with $x = {
-//      do something with $m;
-//      $m := some value;
-//      do something else with $m;
-//  }
-// in this state, $m is added to stack with default value in the start of the operation
-use crate::{event::{Event, OperationTemplate}, translator::{SequenceValue, Signature, ast, automata::Automaton, error::CompilationError, operations::MemberDefNew, parser::parser::Parser, sequence::StructureId, type_constraints::TypeConstraints}, variable::VariableType};
+// TODO TODO TODO: assignments and variable definitions in actions/operations disallow to have a
+// sequence which returns a structure now! FIXME FIXME FIXME
+use crate::{event::{Event, Operation, OperationTemplate, OperationTemplateEnum}, translator::{SequenceValue, Signature, ast::{self, Range}, automata::Automaton, error::{CompilationError, Warning}, parser::parser::Parser, sequence::{SequenceType, StructureId}, type_constraints::TypeConstraints}, variable::VariableType};
+
+pub type OperationMember = (String, VariableType); // name, type
 
 impl Parser {
     pub fn parse_operation(&mut self, definition: &ast::Definition) -> Result<(), CompilationError> {
         let signature = self.parse_signature(&definition.signature)?;
         let (members,interpretations) = self.parse_operation_definition(definition, None)?;
-        if interpretations.is_empty() { println!("nothing for {signature}"); return Ok(()); }    // TODO: warning
+        if interpretations.is_empty() {
+            self.warnings.push(Warning::OperationWithoutInterpretation(signature.clone(), self.get_location(&Range::from(definition))));
+            return Ok(())
+        }
+        self.check_members(&members, definition)?;
         self.infer_datatypes_from_interpretations(&interpretations, &signature, definition, &members)?;
+        Ok(())
+    }
+
+    /// Throw compilation error when a variable is used before it is defined (as a member)
+    /// The current implementation forbids for a global variable to be firstly used and later
+    /// shadowed during the same operation.
+    ///
+    /// For example:
+    /// ```vinx
+    /// $x := 1;
+    /// do something := {
+    ///     process $x; // this should use the global $x
+    ///     $x := "hello"; // this shadows $x with a string variable
+    /// }
+    /// ```
+    ///
+    fn check_members(&self, members: &Vec<String>, definition: &ast::Definition) -> Result<(), CompilationError> {
+        let mut defined = vec![false; members.len()];
+        let check = |defined: &Vec<bool>, var: &String, range: &Range| {
+            if let Some(member_id) = members.iter().position(|x| x == var) {
+                if !defined[member_id] {
+                    return Err(CompilationError::MemberUsedBeforeDefinition(var.clone(), self.get_location(range)));
+                }
+            }
+            Ok(())
+        };
+        for stmt in &definition.body {
+            match &stmt.0 {
+                ast::definition::Statement::VarDefinition(var_def) => {
+                    let Some(member_id) = members.iter().position(|x| x == &var_def.name.0) else {
+                        panic!();
+                    };
+                    defined[member_id] = true;
+                }
+                ast::definition::Statement::Assignment(ass) => {
+                    check(&defined, &ass.name.0, &ass.name.1)?;
+                    for (word, range) in &ass.value.0 {
+                        let ast::sequence::Word::Value(ast::Value::Variable(name)) = word else {
+                            continue;
+                        };
+                        check(&defined, name, range)?;
+                    }
+                }
+                ast::definition::Statement::Event(event) => {
+                    for (word, range) in event {
+                        let ast::sequence::Word::Value(ast::Value::Variable(name)) = word else {
+                            continue;
+                        };
+                        check(&defined, name, range)?;
+                    }
+                }
+                _ => {}
+            }
+        }
         Ok(())
     }
 
     pub fn get_operation_members(&self, definition: &ast::Definition) -> Vec<String> {
         let mut out = vec![];
         for stmt in &definition.body {
-            let ast::definition::Statement::VarDefinition(var_def) = stmt else {
+            let ast::definition::Statement::VarDefinition(var_def) = &stmt.0 else {
                 continue;
             };
-            out.push(var_def.name.clone());
+            out.push(var_def.name.0.clone());
         }
         out
     }
@@ -32,32 +87,39 @@ impl Parser {
         let mut member_names = vec![];
         for stmt in &definition.body {
             let mut ints;
-            match stmt {
+            match &stmt.0 {
                 ast::definition::Statement::VarDefinition(var_def) => {
                     let member_id = self.new_unresolved_variable();
+                    let member = self.get_var_definition(var_def, Some(member_id))?;
                     let member_type = VariableType::Any(member_id);
-                    member_names.push(var_def.name.clone());
-                    let (seq,_) = self.get_sequence(&var_def.value)?;
+                    let member_name = var_def.name.0.to_string();
+                    member_names.push(member_name.clone());
+                    // let (value, value_range) = &var_def.value;
+                    // let (seq,_) = self.parse_sequence(&value)?;
+                    let (seq, _) = member.get_value();
                     ints = self.automaton.get_interpretations(seq.get(), Some(&member_type), &self.operations);
                     if ints.len() == 0 && let Some(aut) = aut {
                         ints = aut.get_interpretations(seq.get(), Some(&member_type), &self.operations);
                     }
-                    if !self.globals.add_variable(var_def.name.clone(), member_type.default()) {
-                        return Err(CompilationError::TemporaryError(format!("duplicate member name in operation definition: {}", var_def.name)));
+                    if !self.globals.add_variable(member_name.clone(), member_type.default()) {
+                        let first_defined_range = definition.find_variable_definition(&member_name);
+                        return Err(CompilationError::DuplicateMemberName(member_name, self.get_location(&var_def.name.1), self.get_location(&first_defined_range)))
                     }
                 }
                 ast::definition::Statement::Assignment(var_def) => {
-                    let Some(member_value) = self.globals.get_variable(&var_def.name) else {
-                        panic!("error: no variable {}", var_def.name); // TODO: make nice
+                    let member_name = var_def.name.0.to_string();
+                    let Some(member_value) = self.globals.get_variable(&member_name) else {
+                        panic!("error: no variable {}", member_name); // TODO: friendlify
                     };
-                    let (seq,_) = self.get_sequence(&var_def.value)?;
+                    let (value,_) = &var_def.value;
+                    let (seq,_) = self.parse_sequence(&value)?;
                     ints = self.automaton.get_interpretations(seq.get(), Some(&member_value.get_type()), &self.operations);
                     if ints.len() == 0 && let Some(aut) = aut {
                         ints = aut.get_interpretations(seq.get(), Some(&member_value.get_type()), &self.operations);
                     }
                 }
                 ast::definition::Statement::Event(e) => {
-                    let (seq,_) = self.get_sequence(&e)?;
+                    let (seq,_) = self.parse_sequence(&e)?;
                     ints = self.automaton.get_interpretations(seq.get(), None, &self.operations);
                     if ints.len() == 0 && let Some(aut) = aut {
                         ints = aut.get_interpretations(seq.get(), None, &self.operations);
@@ -119,28 +181,27 @@ impl Parser {
         }
     }
 
-    pub fn get_members(&self, members: &Vec<String>) -> Vec<MemberDefNew> {
+    pub fn get_members(&self, members: &Vec<String>) -> Vec<OperationMember> {
         members.iter().map(|name| 
             (name.clone(), self.globals.get_variable(name).expect(&format!("error: variable `{name}` not found")).get_type()))
             .collect()
     }
 
     /// Add given operation to the global list and register its signature in the Translator's automaton.
-    pub fn add_operation(&mut self, signature: Signature, events: Vec<Event>, members: Vec<MemberDefNew>) -> bool {
+    pub fn add_operation(&mut self, signature: Signature, events: Vec<Event>, members: Vec<OperationMember>) -> bool {
         let op_id = self.operations.len();
         // println!("adding operation '{signature}' => {op_id} ({})", signature.sequence);
-        if !self.automaton.register(signature.sequence.clone(), SequenceValue::Operation(op_id)) {
+        if !self.automaton.register(signature.sequence.clone(), SequenceType::Operation) {
             return false // TODO: generate warning
         }
         let mut result = None;
         if !events.is_empty() {
             let last_event = &events[events.len()-1];
             if let Event::Call(event) = last_event {
-                let event_op = &self.operations[event.get_id()];
-                result = event_op.get_return_type().cloned();
+                result = event.get_return_type().cloned();
             }
         }
-        self.operations.push(OperationTemplate::new(op_id, signature, events, members, result));
+        self.operations.push(OperationTemplateEnum::Standard(OperationTemplate::new(op_id, signature, events, members, result)));
         true
     }
 
@@ -151,52 +212,51 @@ impl Parser {
     pub fn get_operation_definition(&mut self, definition: &ast::Definition, structure: Option<StructureId>) -> Result<Vec<Event>, CompilationError> {
         let mut events = vec![];
         for stmt in &definition.body {
-            match stmt {
+            match &stmt.0 {
                 ast::definition::Statement::Assignment(d) => {
-                    let mut event = self.get_event(&d.value)?;
-                    // if this operation is a method
-                    // and it contains another method
-                    // of this structure: we do not
-                    // have to load the structure
-                    // parameters again
-                    if let Some(structure_id) = structure {
-                        let op = &self.operations[event.get_id()];
-                        if let Some(struct_id) = op.method_of() {
-                            if *struct_id == structure_id {
-                                event.deactivate_struct();
-                            }
-                        }
-                    }
-                    events.push(Event::Assignment(d.name.clone(), event));
+                    let event = self.get_operation_event(&d.value.0, structure)?;
+                    events.push(Event::Assignment(d.name.0.clone(), event));
                 }
                 ast::definition::Statement::VarDefinition(d) => {
-                    let mut event = self.get_event(&d.value)?;
-                    if let Some(structure_id) = structure {
-                        let op = &self.operations[event.get_id()];
-                        if let Some(struct_id) = op.method_of() {
-                            if *struct_id == structure_id {
-                                event.deactivate_struct();
-                            }
-                        }
-                    }
-                    events.push(Event::Assignment(d.name.clone(), event));
+                    let definition = self.get_var_definition(d, None)?;
+                    let (seq,params) = definition.get_value();
+                    let Some(SequenceValue::Operation(op_id)) = self.automaton.run(seq.get()) else {
+                        panic!() // TODO: friendlify
+                    };
+                    let mut event = self.operations[op_id].get().instantiate(params.clone());
+                    self.deactivate_struct_for_event(&mut event, structure);
+                    events.push(Event::Assignment(d.name.0.clone(), event));
                 }
                 ast::definition::Statement::Event(e) => {
-                    let mut event = self.get_event(e)?;
-                    if let Some(structure_id) = structure {
-                        let op = &self.operations[event.get_id()];
-                        if let Some(struct_id) = op.method_of() {
-                            if *struct_id == structure_id {
-                                event.deactivate_struct();
-                            }
-                        }
-                    }
+                    let event = self.get_operation_event(e, structure)?;
                     events.push(Event::Call(event));
                 }
                 ast::definition::Statement::Definition(_) => panic!("error: nested definition not expected in operation")
             }
         }
         Ok(events)
+    }
+
+    fn get_operation_event(&mut self, seq: &ast::Sequence, structure: Option<StructureId>) -> Result<Operation, CompilationError> {
+        let mut event = self.get_operation(seq)?;
+        self.deactivate_struct_for_event(&mut event, structure);
+        Ok(event)
+    }
+
+    fn deactivate_struct_for_event(&self, event: &mut Operation, structure: Option<StructureId>) {
+        // if this operation is a method
+        // and it contains another method
+        // of this structure: we do not
+        // have to load the structure
+        // parameters again
+        if let Some(structure_id) = structure {
+            let op = &self.operations[event.get_id()].get();
+            if let Some(struct_id) = op.method_of() {
+                if *struct_id == structure_id {
+                    event.deactivate_struct();
+                }
+            }
+        }
     }
 
     /// Update the type of every `signature` parameter on the stack.

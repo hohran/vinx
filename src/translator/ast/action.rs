@@ -1,6 +1,6 @@
 use tree_sitter::Node;
 
-use crate::translator::ast::get_range;
+use crate::translator::ast::VarDefinition;
 use crate::translator::ast::{Assignment, AstBuilder};
 use super::Range;
 
@@ -40,6 +40,19 @@ pub struct Action {
 pub enum Event {
     Operation(Sequence, Range),
     Assignment(Assignment, Range),
+    VarDefinition(VarDefinition, Range),
+}
+
+impl Action {
+    pub fn find_variable_definition(&self, name: &str) -> Range {
+        for e in &self.events {
+            let Event::VarDefinition(d, r) = e else { continue; };
+            if &d.name.0 == name {
+                return r.clone();
+            }
+        }
+        panic!("could not find variable definition for `{name}`");
+    }
 }
 
 impl AstBuilder {
@@ -48,16 +61,16 @@ impl AstBuilder {
         let label = node.child_by_field_name("label").map(|n| self.get_string(&n));
         let trigger = self.get_trigger(&node.child_by_field_name("trigger").unwrap());
         let events = self.get_events(&node.child_by_field_name("events").unwrap());
-        Action { label, trigger, events, range: get_range(node) }
+        Action { label, trigger, events, range: Range::from(node) }
     }
 
     pub fn get_trigger(&self, node: &Node) -> Trigger {
         self.expect_node_kind(node, "trigger");
         let active = node.child_by_field_name("deactivated").is_none();
         let onetime = self.get_repeat_quantifier(&node.child_by_field_name("onetime").unwrap());
-        let time = node.child_by_field_name("step").map_or(Time::Number(1, get_range(node)), |n| self.get_time(&n));
+        let time = node.child_by_field_name("step").map_or(Time::Number(1, Range::from(node)), |n| self.get_time(&n));
         let unit = self.get_unit(&node.child_by_field_name("unit").unwrap());
-        Trigger { onetime, active, time, unit, range: get_range(node) }
+        Trigger { onetime, active, time, unit, range: Range::from(node) }
     }
 
     pub fn get_repeat_quantifier(&self, node: &Node) -> bool {
@@ -72,17 +85,17 @@ impl AstBuilder {
     pub fn get_unit(&self, node: &Node) -> Unit {
         self.expect_node_kind(node, "time_unit");
         match node.field_name_for_child(0).unwrap() {
-            "frame" => Unit::Frame(get_range(node)),
-            "second" => Unit::Second(get_range(node)),
-            "millisecond" => Unit::Millisecond(get_range(node)),
+            "frame" => Unit::Frame(Range::from(node)),
+            "second" => Unit::Second(Range::from(node)),
+            "millisecond" => Unit::Millisecond(Range::from(node)),
             x => panic!("error: unexpect time unit `{x}`"),
         }
     }
     
     pub fn get_time(&self, node: &Node) -> Time {
         match node.kind() {
-            "number" => Time::Number(self.get_number(node), get_range(node)),
-            "variable" => Time::Variable(self.get_variable(node), get_range(node)),
+            "number" => Time::Number(self.get_number(node), Range::from(node)),
+            "variable" => Time::Variable(self.get_variable(node), Range::from(node)),
             x => panic!("error: unexpected node kind for time {node:?}: {x}"),
         }
     }
@@ -103,8 +116,9 @@ impl AstBuilder {
         self.expect_node_kind(node, "event");
         let child = node.child(0).unwrap();
         match child.kind() {
-            "sequence" => Event::Operation(self.get_sequence(&child), get_range(node)),
-            "assignment" => Event::Assignment(self.get_var_assignment(&child), get_range(node)),
+            "sequence" => Event::Operation(self.get_sequence(&child), Range::from(node)),
+            "assignment" => Event::Assignment(self.get_var_assignment(&child), Range::from(node)),
+            "var_definition" => Event::VarDefinition(self.get_var_definition(&child), Range::from(node)),
             x => panic!("error: unexpected node kind for event: `{x}")
         }
     }

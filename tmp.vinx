@@ -1,0 +1,12 @@
+$cs: [Color] = [red, green, blue];
+$r: Rectangle = rectangle from (10,10) to (100,100);
+
+every frame {
+  $c: Color = top $cs;
+  draw $c $r;
+}
+
+every 10 frames {
+  rotate $cs right by 1;
+  move $r by (10,30);
+}

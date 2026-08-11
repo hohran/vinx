@@ -1,4 +1,5 @@
-use crate::event::{OperationTemplate, builtins::*};
+use crate::event::{OperationTemplate, OperationTemplateEnum, TopLevelOperation, builtins::*};
+use crate::translator::sequence::SequenceType;
 use crate::{seq, word, vtype};
 use crate::variable::VariableType;
 
@@ -29,7 +30,23 @@ macro_rules! builtins {
 }
 
 /// Generate all builtin operations, note them in the automaton `aut` and return them.
-pub fn load_builtin_operations(aut: &mut Automaton) -> Vec<OperationTemplate> {
+pub fn load_top_level_operations(aut: &mut Automaton) -> Vec<OperationTemplateEnum> {
+    let builtins: &[(Sequence, TopLevelOperation)] = &[
+        (seq!("load" String), TopLevelOperation::LoadFile),
+        (seq!("do" "not" "save"), TopLevelOperation::DoNotSave),
+    ];
+    let mut ops = vec![];
+    for (seq,f) in builtins {
+        if !aut.register(seq.clone(), SequenceType::Operation) {
+            panic!("error: union did not create any new states");
+        }
+        ops.push(OperationTemplateEnum::TopLevel(*f));
+    }
+    ops
+}
+
+/// Generate all builtin operations, note them in the automaton `aut` and return them.
+pub fn load_builtin_operations(aut: &mut Automaton) -> Vec<OperationTemplateEnum> {
     let builtins: &[(Sequence, Option<VariableType>, Builtin)] = &builtins!(
         ((Any(0))) => VariableType::Any(0), get_value;
         ("restricted" "move" Pos Direction "by" Int), move_pos;
@@ -37,6 +54,7 @@ pub fn load_builtin_operations(aut: &mut Automaton) -> Vec<OperationTemplate> {
         ("draw" Color "rectangle" "outline" "from" Pos "to" Pos), draw_rect_outline;
         ("activate" String), activate;
         ("deactivate" String), deactivate;
+        ("stop"), stop;
         ("set" (Any(0)) "to" (Any(0))), set;
         ("rotate" [(Any(0))] Direction "by" Int), rotate_vec;
         ("top" [(Any(0))] "into" (Any(0))), top_into;
@@ -51,38 +69,48 @@ pub fn load_builtin_operations(aut: &mut Automaton) -> Vec<OperationTemplate> {
         ("get" "frame") => VariableType::Image, get_frame;
         ("move" Rectangle "by" Pos), rectangle::move_by;
         ("expand" Rectangle "by" Int), rectangle::expand;
+        ("get" "corner" "of" Rectangle) => VariableType::Pos, rectangle::get_corner;
         ("draw" Color Rectangle), rectangle::draw;
+        ("draw" Color "outline" "of" Rectangle), rectangle::draw_outline;
         ("draw" Image "at" Pos), image::draw_at;
         ("save" Image "as" String), image::save_as;
         ("draw" Color Rectangle "into" Image), image::draw_into;
+        ("rectangle" "from" Pos "to" Pos) => VariableType::Rectangle, rectangle::new;
         (Color "image" Int "x" Int) => VariableType::Image, image::colored;
         ("load" "image" "from" String) => VariableType::Image, image::load_from;
+        ("take" Rectangle "from" Image) => VariableType::Image, image::take_from;
+        ("take" "column" "at" Int) => VariableType::Column, column::take;
+        ("append" Column "to" Image), column::append;
+        ("prepend" Column "to" Image), column::prepend;
+        ("take" "row" "at" Int) => VariableType::Row, row::take;
+        ("append" Row "to" Image), row::append;
+        ("prepend" Row "to" Image), row::prepend;
     );
     let mut ops = vec![];
     for (i,(seq,ret,op)) in builtins.into_iter().enumerate() {
-        if !aut.register(seq.clone(), SequenceValue::Operation(i)) {
+        if !aut.register(seq.clone(), SequenceType::Operation) {
             panic!("error: union did not create any new states");
         }
-        ops.push(OperationTemplate::from_builtin(i, seq.clone(), *op, ret.clone()));
+        ops.push(OperationTemplateEnum::Standard(OperationTemplate::from_builtin(i, seq.clone(), *op, ret.clone())));
     }
     ops
 }
 
 /// Generate all builtin structures, note them in the automaton `aut` and return them.
 pub fn load_builtin_structures(aut: &mut Automaton) -> Vec<StructureTemplate> {
-    let builtins = [
-        // rectangle
-        seq!("rectangle" "from" Pos "to" Pos),
-    ];
+    // let builtins = [
+    //     // // rectangle
+    //     // seq!("rectangle" "from" Pos "to" Pos),
+    // ];
     let mut structures = vec![];
-    for (i,seq) in builtins.into_iter().enumerate() {
-        let types = seq.get_types();
-        if !aut.register(seq.clone(), SequenceValue::Structure(i)) {
-            panic!("error: union did not create any new states");
-        }
-        let param_names: Vec<String> = types.iter().enumerate().map(|(i,_)| i.to_string()).collect();
-        let param_types = types.into_iter().map(|v| v.clone()).collect();
-        structures.push(StructureTemplate::new(i, param_names, param_types, vec![]));
-    }
+    // for (i,seq) in builtins.into_iter().enumerate() {
+    //     let types = seq.get_types();
+    //     if !aut.register(seq.clone(), SequenceValue::Structure(i)) {
+    //         panic!("error: union did not create any new states");
+    //     }
+    //     let param_names: Vec<String> = types.iter().enumerate().map(|(i,_)| i.to_string()).collect();
+    //     let param_types = types.into_iter().map(|v| v.clone()).collect();
+    //     structures.push(StructureTemplate::new(i, param_names, param_types, vec![]));
+    // }
     structures
 }

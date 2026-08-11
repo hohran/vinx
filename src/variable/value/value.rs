@@ -1,20 +1,23 @@
 use std::fmt::Display;
 
-use crate::{variable::{Variable, VariableType}, video::Frame};
+use crate::{variable::{Row, Variable, VariableType, value::column::Column}, video::Frame};
 
-use super::{Color,Effect,Direction,Structure};
+use super::{Color,Effect,Direction,Structure,Rectangle,Position};
 
 /// Values of variables
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum VariableValue {
     Any(usize),
     Int(i32),
-    Pos(i32, i32),
+    Pos(Position),
     String(String),
     Color(Color),
     Effect(Effect),
     Direction(Direction),
+    Rectangle(Rectangle),
     Structure(Structure),
+    Column(Column),
+    Row(Row),
     Image(Frame),
     // This exists only as a default value of respective VariableType
     // It should not be directly used, outside of method parsing
@@ -36,11 +39,14 @@ impl VariableValue {
     pub fn get_type(&self) -> VariableType {
         match self {
             Self::Int(_) => VariableType::Int,
-            Self::Pos(_,_) => VariableType::Pos,
+            Self::Pos(_) => VariableType::Pos,
             Self::Color(_) => VariableType::Color,
             Self::String(_) => VariableType::String,
             Self::Effect(_) => VariableType::Effect,
             Self::Direction(_) => VariableType::Direction,
+            Self::Column(_) => VariableType::Column,
+            Self::Row(_) => VariableType::Row,
+            Self::Rectangle(_) => VariableType::Rectangle,
             Self::Image(_) => VariableType::Image,
             Self::Structure(s) => VariableType::Structure(s.id),
             Self::SelfReference => VariableType::SelfReference,
@@ -70,52 +76,63 @@ impl VariableValue {
     }
 
     pub fn into_int(&self) -> i32 {
-        let Self::Int(i) = self else {
-            panic!();
-        };
+        let Self::Int(i) = self else { panic!(); };
         *i
     }
 
-    pub fn into_pos(&self) -> (i32,i32) {
-        let Self::Pos(x, y) = self else {
-            panic!();
-        };
-        (*x,*y)
+    pub fn into_pos(&self) -> Position {
+        let Self::Pos(pos) = self else { panic!(); };
+        *pos
     }
 
     pub fn into_vec(&self) -> &Vec<Variable> {
-        let Self::Vec(v) = self else {
-            panic!();
-        };
+        let Self::Vec(v) = self else { panic!(); };
         v
     }
 
     pub fn into_direction(&self) -> Direction {
-        let Self::Direction(d) = self else {
-            panic!();
-        };
+        let Self::Direction(d) = self else { panic!(); };
         *d
     }
 
     pub fn into_color(&self) -> Color {
-        let Self::Color(c) = self else {
-            panic!();
-        };
+        let Self::Color(c) = self else { panic!(); };
         *c
     }
 
+    pub fn into_rectangle(&self) -> Rectangle {
+        let Self::Rectangle(r) = self else { panic!(); };
+        *r
+    }
+
+    pub fn into_rectangle_mut(&mut self) -> &mut Rectangle {
+        let Self::Rectangle(r) = self else { panic!(); };
+        r
+    }
+
     pub fn into_effect(&self) -> Effect {
-        let Self::Effect(e) = self else {
-            panic!();
-        };
+        let Self::Effect(e) = self else { panic!(); };
         *e
     }
 
     pub fn into_image(&self) -> &Frame {
-        let Self::Image(i) = self else {
-            panic!();
-        };
+        let Self::Image(i) = self else { panic!(); };
         i
+    }
+
+    pub fn into_image_mut(&mut self) -> &mut Frame {
+        let Self::Image(i) = self else { panic!(); };
+        i
+    }
+
+    pub fn into_column(&self) -> &Column {
+        let Self::Column(c) = self else { panic!(); };
+        c
+    }
+
+    pub fn into_row(&self) -> &Row {
+        let Self::Row(c) = self else { panic!(); };
+        c
     }
 }
 
@@ -124,8 +141,11 @@ impl Display for VariableValue {
         match self {
             Self::Any(b) => write!(f, "Any({b})"),
             Self::Int(i) => write!(f, "{i}"),
-            Self::Pos(x, y) => write!(f, "({x},{y})"),
+            Self::Pos(pos) => write!(f, "{pos}"),
+            Self::Rectangle(r) => write!(f, "{r}"),
             Self::String(s) => write!(f, "\"{s}\""),
+            Self::Column(c) => write!(f, "{c}"),
+            Self::Row(r) => write!(f, "{r}"),
             Self::Color(c) => write!(f, "{{{},{},{}}}",c.0[0],c.0[1],c.0[2]),
             Self::Effect(e) => write!(f, "{e}"),
             Self::Direction(d) => write!(f, "{d}"),

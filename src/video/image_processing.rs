@@ -1,206 +1,7 @@
-use std::{path::Path, process::Command};
-
-// extern crate rsframe;
-use rand::{Rng, distributions::Alphanumeric, thread_rng};
-// use rsframe::vfx::video::Pixel;
-// pub use rsframe::vfx::video::{Frame,Video};
-use image::{ImageReader, ImageResult, Pixel, RgbImage};
-use rayon::prelude::*;
-use rayon::iter::IntoParallelRefIterator;
+use super::*;
+use rand::{Rng, thread_rng};
+use image::{Pixel, Rgb, RgbImage};
 use crate::variable::{Color, Effect};
-use std::fs;
-
-pub type Frame = RgbImage;
-
-pub struct Video {
-    width: u32,
-    height: u32,
-    frames: Vec<Frame>
-}
-
-impl Video {
-    pub fn save(&self, export_location: String, fps: u8, keep_folder: bool, ffmpeg: &str) {
-        let temporary = create_tmp_folder();
-
-        // Use Rayon to parallelize the loop
-        self.frames.par_iter().enumerate().for_each(|(fi, frame)| {
-            frame.save(format!("{}/image{}.bmp", temporary, fi + 1)).unwrap();
-        });
-
-        let results = build_folder(temporary.clone(), fps as i32, export_location, ffmpeg);
-
-        match results {
-            Ok(_) => {
-                if !keep_folder {
-                    drop_folder(temporary);
-                }
-            }
-            Err(_) => {
-                println!("Cannot render video.");
-            }
-        }
-    }
-
-    pub fn from_file(filename: String, ffmpeg: &str) -> Result<Video, String> {
-        let temp = create_tmp_folder();
-
-        eprintln!("Encoding video \"{filename}\"...");
-        let encoding = ".bmp";
-        let output = Command::new(ffmpeg)
-            .arg("-i")
-            .arg(filename.as_str())
-            .arg("-loglevel").arg("quiet")
-            .arg(format!("{temp}/image%d{encoding}"))
-            .status();
-
-        if let Err(err) = output {
-            return Err(format!("FFmpeg command failed: {}", err));
-        }
-
-        if !output.unwrap().success() {
-            return Err("FFmpeg did not exit successfully.".to_string());
-        }
-
-        let dir_path = Path::new(&temp);
-        let entries: Vec<_> = match fs::read_dir(dir_path) {
-            Ok(entries) => entries
-                .filter_map(|entry| entry.ok())
-                .map(|entry| entry.path())
-                .filter(|path| path.is_file())
-                .collect(),
-            Err(err) => {
-                drop_folder(temp);
-                return Err(format!("Failed to read temporary directory: {}", err));
-            }
-        };
-
-        let mut sorted_entries = entries.clone();
-        sorted_entries.sort_by(|a, b| {
-            // Extract frame numbers from filenames and compare numerically
-            let a_num = a.file_name().unwrap().to_str().unwrap()
-                .trim_start_matches("image")
-                .trim_end_matches(encoding)
-                .parse::<u32>().unwrap();
-            let b_num = b.file_name().unwrap().to_str().unwrap()
-                .trim_start_matches("image")
-                .trim_end_matches(encoding)
-                .parse::<u32>().unwrap();
-            a_num.cmp(&b_num)
-        });
-
-        let frames: Vec<_> = sorted_entries
-            .par_iter()
-            .filter_map(|path| {
-                let frame_path = path.to_str().unwrap().to_string();
-                read_image(frame_path).ok()
-            })
-        .collect();
-
-        if frames.is_empty() {
-            drop_folder(temp);
-            return Err("No frames were successfully loaded.".to_string());
-        }
-
-        let first_frame = &frames[0];
-        let video = Video {
-            width: first_frame.width(),
-            height: first_frame.height(),
-            frames,
-        };
-
-        drop_folder(temp);
-
-        Ok(video)
-    }
-
-    pub fn get_frame_mut(&mut self, at: usize) -> &mut Frame {
-        &mut self.frames[at]
-    }
-
-    pub fn width(&self) -> u32 {
-        self.width
-    }
-
-    pub fn height(&self) -> u32 {
-        self.height
-    }
-
-    pub fn length(&self) -> usize {
-        self.frames.len()
-    }
-}
-
-pub fn build_folder(folder_path: String, framerate: i32, location: String, ffmpeg: &str) -> Result<(), ()> {
-    // Ensure the input images exist
-    let folder_path = Path::new(&folder_path);
-
-    // Check for existing image files
-    let image_files: Vec<_> = std::fs::read_dir(folder_path)
-        .map_err(|_| ())?
-        .filter_map(|entry| entry.ok())
-        .filter(|entry| {
-            if let Some(ext) = entry.path().extension() {
-                ext == "bmp"
-            } else {
-                false
-            }
-        })
-        .collect();
-
-    if image_files.is_empty() {
-        eprintln!("No BMP images found in the specified folder");
-        return Err(());
-    }
-
-    // Construct the input pattern for FFmpeg (all BMP files in the folder)
-    let input_pattern = folder_path.join("image%d.bmp").to_string_lossy().to_string();
-
-    // Execute FFmpeg command to convert images to video
-    let output = Command::new(ffmpeg)
-        .args(&[
-            "-framerate", &framerate.to_string(),
-            "-i", &input_pattern,
-            "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", // Ensure even resolution
-            "-c:v", "libx264",  // Use H.264 video codec
-            "-preset", "medium",
-            "-crf", "23",        // Reasonable quality setting
-            "-pix_fmt", "yuv420p", // Ensure compatibility
-            "-y",  // Overwrite output file if it exists
-            &location
-        ])
-        .output()
-        .map_err(|_| ())?;  // Convert any execution error to ()
-
-    // Check if the command was successful
-    if output.status.success() {
-        Ok(())
-    } else {
-        // Log the full error output
-        eprintln!("FFmpeg error: {}", String::from_utf8_lossy(&output.stderr));
-        Err(())
-    }
-}
-
-pub fn read_image(path: String) -> ImageResult<Frame> {
-    ImageReader::open(path)?.decode().map(|x| x.into())
-}
-
-fn drop_folder(path: String) {
-    fs::remove_dir_all(path).expect("Could not drop folder.");
-}
-
-fn create_tmp_folder() -> String {
-    let name: String = thread_rng()
-        .sample_iter(&Alphanumeric)
-        .take(32)
-        .map(char::from)
-        .collect();
-    let path = format!("_{}-tmp", name);
-
-    std::fs::create_dir(path.clone()).unwrap();
-    path
-}
-
 
 // ************* Drawable impl ************* //
 pub trait Drawable {
@@ -425,5 +226,101 @@ fn inverse(f: &mut Frame, l: u32, r: u32, t: u32, b: u32) {
                 for x in l..width { inverse_pixel(f, x, y); }
             }
         }
+    }
+}
+
+// ************* Extendable impl ************* //
+pub trait Extendable {
+    fn append_column(&mut self, column: &[Rgb<u8>]);
+    fn prepend_column(&mut self, column: &[Rgb<u8>]);
+    fn append_row(&mut self, row: &[Rgb<u8>]);
+    fn prepend_row(&mut self, row: &[Rgb<u8>]);
+}
+
+impl Extendable for Frame {
+    /// Append a column to the right edge of the image.
+    fn append_column(&mut self, column: &[Rgb<u8>]) {
+        let (width, height) = self.dimensions();
+        if width == 0 {
+            let raw: Vec<u8> = column.iter().flat_map(|p| p.0).collect();
+            *self = RgbImage::from_raw(1, column.len() as u32, raw).unwrap();
+            return
+        }
+        assert_eq!(column.len() as u32, height, "column length must match image height");
+
+        let old_raw = self.as_raw();
+        let stride = width as usize * 3;
+        let mut new_raw = Vec::with_capacity((width + 1) as usize * height as usize * 3);
+
+        for y in 0..height as usize {
+            new_raw.extend_from_slice(&old_raw[y * stride..(y + 1) * stride]);
+            new_raw.extend_from_slice(&column[y].0);
+        }
+
+        *self = RgbImage::from_raw(width + 1, height, new_raw).unwrap()
+    }
+
+    /// Prepend a column to the left edge of the image.
+    fn prepend_column(&mut self, column: &[Rgb<u8>]) {
+        let (width, height) = self.dimensions();
+        if width == 0 {
+            let raw: Vec<u8> = column.iter().flat_map(|p| p.0).collect();
+            *self = RgbImage::from_raw(1, column.len() as u32, raw).unwrap();
+            return
+        }
+        assert_eq!(column.len() as u32, height, "column length must match image height");
+
+        let old_raw = self.as_raw();
+        let stride = width as usize * 3;
+        let mut new_raw = Vec::with_capacity((width + 1) as usize * height as usize * 3);
+
+        for y in 0..height as usize {
+            new_raw.extend_from_slice(&column[y].0);
+            new_raw.extend_from_slice(&old_raw[y * stride..(y + 1) * stride]);
+        }
+
+        *self = RgbImage::from_raw(width + 1, height, new_raw).unwrap()
+    }
+
+    /// Append a row to the bottom edge of the image.
+    fn append_row(&mut self, row: &[Rgb<u8>]) {
+        let (width, height) = self.dimensions();
+        if height == 0 {
+            let raw: Vec<u8> = row.iter().flat_map(|p| p.0).collect();
+            *self = RgbImage::from_raw(row.len() as u32, 1, raw).unwrap();
+            return
+        }
+        assert_eq!(row.len() as u32, width, "row length must match image width");
+
+        let old_raw = self.as_raw();
+        let mut new_raw = Vec::with_capacity(width as usize * (height + 1) as usize * 3);
+
+        new_raw.extend_from_slice(old_raw);
+        for pixel in row {
+            new_raw.extend_from_slice(&pixel.0);
+        }
+
+        *self = RgbImage::from_raw(width, height + 1, new_raw).unwrap()
+    }
+
+    /// Prepend a row to the top edge of the image.
+    fn prepend_row(&mut self, row: &[Rgb<u8>]) {
+        let (width, height) = self.dimensions();
+        if height == 0 {
+            let raw: Vec<u8> = row.iter().flat_map(|p| p.0).collect();
+            *self = RgbImage::from_raw(row.len() as u32, 1, raw).unwrap();
+            return
+        }
+        assert_eq!(row.len() as u32, width, "row length must match image width");
+
+        let old_raw = self.as_raw();
+        let mut new_raw = Vec::with_capacity(width as usize * (height + 1) as usize * 3);
+
+        for pixel in row {
+            new_raw.extend_from_slice(&pixel.0);
+        }
+        new_raw.extend_from_slice(old_raw);
+
+        *self = RgbImage::from_raw(width, height + 1, new_raw).unwrap()
     }
 }

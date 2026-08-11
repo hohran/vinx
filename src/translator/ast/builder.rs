@@ -1,7 +1,7 @@
 use tree_sitter::Node;
 
 pub struct AstBuilder {
-    filename: String,
+    pub filename: String,
     source_code: String,
 }
 

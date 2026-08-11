@@ -69,7 +69,9 @@ macro_rules! word {
     ( Image ) => { Word::Type(VariableType::Image) };
     ( Structure ( $i:expr ) ) => { Word::Type(VariableType::Structure($i)) };
     ( Any ( $i:expr ) ) => { Word::Type(VariableType::Any($i)) };
-    ( Rectangle ) => { Word::Type(VariableType::Structure(0)) };
+    ( Rectangle ) => { Word::Type(VariableType::Rectangle) };
+    ( Column ) => { Word::Type(VariableType::Column) };
+    ( Row ) => { Word::Type(VariableType::Row) };
     ( ( $($x:tt)+ ) ) => { word!($($x)+) };
     ( String ) => { Word::Type(VariableType::String) };
     ( $x:ident ) => { Word::Keyword(stringify!($x).to_string()) };

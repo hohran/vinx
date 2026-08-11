@@ -6,11 +6,11 @@ use crate::variable::{Direction, Effect};
 type Color = (u8, u8, u8); // TODO: add alpha
 type Position = (i64, i64);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Value {
     Variable(String),
     Number(i64),
-    Position(Position), // TODO: make into Tuple
+    Position(Position),
     Color(Color),
     Effect(Effect),
     Direction(Direction),
@@ -151,8 +151,42 @@ fn c2i(c: char) -> u8 {
     }
 }
 
-// TODO: test
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::macros::*;
+
+    macro_rules! at {
+        ( $vec:ident [ $at:expr ] ) => {
+            $vec.child($at*2+1).unwrap()
+        };
+    }
+
+    #[test]
+    fn test_number() {
+        let contents = "$x := [0, 1, -1, 1000]";
+        let tree = parse(contents);
+        let root = tree.root_node();
+        let vec = get!(root => var_definition => sequence => value => vector);
+        let builder = AstBuilder::new("-", contents.into());
+        let nums: Vec<i64> = (0..4).map(|i| builder.get_number(&at!(vec[i]).child(0).unwrap())).collect();
+        assert_eq!(nums[0], 0);
+        assert_eq!(nums[1], 1);
+        assert_eq!(nums[2], -1);
+        assert_eq!(nums[3], 1000);
+    }
+
+    #[test]
+    fn test_direction() {
+        let contents = "$x := [left, right, up, down]";
+        let tree = parse(contents);
+        let root = tree.root_node();
+        let vec = get!(root => var_definition => sequence => value => vector);
+        let builder = AstBuilder::new("-", contents.into());
+        let dirs: Vec<Direction> = (0..4).map(|i| builder.get_direction(&at!(vec[i]).child(0).unwrap())).collect();
+        assert_eq!(dirs[0], Direction::Left);
+        assert_eq!(dirs[1], Direction::Right);
+        assert_eq!(dirs[2], Direction::Up);
+        assert_eq!(dirs[3], Direction::Down);
+    }
 }

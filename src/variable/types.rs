@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::video::Frame;
+use crate::{variable::{Column, Row, value::{Position, Rectangle}}, video::Frame};
 
 use super::{Structure, Direction, VariableValue};
 
@@ -19,6 +19,10 @@ macro_rules! vtype {
     ( Color ) => { VariableType::Color };
     ( Direction ) => { VariableType::Direction };
     ( Effect ) => { VariableType::Effect };
+    ( Column ) => { VariableType::Column };
+    ( Row ) => { VariableType::Row };
+    ( Image ) => { VariableType::Image };
+    ( Rectangle ) => { VariableType::Rectangle };
     ( Structure($i:expr) ) => { VariableType::Structure($i) };
     ( Any ( $i:expr ) ) => { VariableType::Any($i) };
     ( ( $($x:tt)+ ) ) => { vtype!($($x)+) };
@@ -28,10 +32,13 @@ macro_rules! vtype {
 pub enum VariableType {
     Int,
     Pos,
+    Column,
+    Row,
     Color,
     String,
     Effect,
     Direction,
+    Rectangle,
     Image,
     Vec(Box<VariableType>),
     Any(usize),
@@ -47,10 +54,13 @@ impl Display for VariableType {
         match self {
             VariableType::Int => write!(f, "Int"),
             VariableType::Pos => write!(f, "Pos"),
+            VariableType::Column => write!(f, "Column"),
+            VariableType::Row => write!(f, "Row"),
             VariableType::Color => write!(f, "Color"),
             VariableType::Effect => write!(f, "Effect"),
             VariableType::Direction => write!(f, "Dir"),
             VariableType::String => write!(f, "Str"),
+            VariableType::Rectangle => write!(f, "Rectangle"),
             VariableType::Image => write!(f, "Image"),
             VariableType::Any(x) => write!(f, "Any({})",x),
             VariableType::Vec(x) => write!(f, "[{}]",x),
@@ -94,11 +104,14 @@ impl VariableType {
         match &self {
             VariableType::Vec(x) => VariableValue::Vec(vec![x.default().to_var()]),
             VariableType::Int => VariableValue::Int(0),
-            VariableType::Pos => VariableValue::Pos(0, 0),
+            VariableType::Pos => VariableValue::Pos(Position::default()),
+            VariableType::Column => VariableValue::Column(Column::default()),
+            VariableType::Row => VariableValue::Row(Row::default()),
             VariableType::Direction => VariableValue::Direction(Direction::Left),
             VariableType::Color => VariableValue::Color([0,0,0].into()),
             VariableType::String => VariableValue::String("".to_string()),
             VariableType::Image => VariableValue::Image(Frame::new(0,0)),
+            VariableType::Rectangle => VariableValue::Rectangle(Rectangle::default()),
             VariableType::Effect => VariableValue::Effect(super::Effect::Blur),
             VariableType::Any(x) => VariableValue::Any(*x),
             VariableType::Structure(x) => VariableValue::Structure(Structure::default(*x)),
@@ -245,6 +258,14 @@ impl VariableType {
             depth -= 1;
         }
         x
+    }
+
+    /// Wrap this type to a given `depth`.
+    /// * Int + 2 => \[\[Int]]
+    pub fn wrap_depth(&mut self, depth: usize) {
+        if depth == 0 { return }
+        *self = VariableType::Vec(Box::new(self.clone()));
+        self.wrap_depth(depth-1);
     }
 }
 

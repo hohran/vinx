@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{translator::MemberDefNew, variable::{VariableType, VariableValue}};
+use crate::{translator::parser::OperationMember, variable::{VariableType, VariableValue}};
 
 pub type Scope = HashMap<String,VariableValue>;
 
@@ -132,7 +132,7 @@ impl Stack {
         *elem_value = new_value;
     }
 
-    pub fn scope_from_members(members: &Vec<MemberDefNew>) -> Scope {
+    pub fn scope_from_members(members: &Vec<OperationMember>) -> Scope {
         let mut scope = Scope::new();
         for m in members {
             scope.insert(m.0.clone(), m.1.default());
@@ -145,7 +145,7 @@ impl Stack {
 mod tests {
     use image::Rgb;
 
-    use crate::variable::Effect;
+    use crate::variable::{Effect, Position};
 
     use super::*;
 
@@ -164,7 +164,7 @@ mod tests {
     fn test_add_variable() {
         let mut s = Stack::new();
         s.add_variable("i".to_string(), VariableValue::Int(1));                                     // 1
-        s.add_variable("p".to_string(), VariableValue::Pos(1, 1));                                  // (1,1)
+        s.add_variable("p".to_string(), VariableValue::Pos(Position::new(1, 1)));                   // (1,1)
         s.add_variable("s".to_string(), VariableValue::String("str".to_string()));                  // "str"
         s.add_variable("c".to_string(), VariableValue::Color(Rgb([255,255,255])));                  // #FFFFFF
         s.add_variable("e".to_string(), VariableValue::Effect(Effect::Blur));                       // blurred
@@ -172,7 +172,7 @@ mod tests {
         s.add_variable("vi".to_string(), VariableValue::Vec(vec![VariableValue::Int(1).to_var()])); // [1]
 
         assert_eq!(s.get_variable("i").unwrap(), &VariableValue::Int(1));
-        assert_eq!(s.get_variable("p").unwrap(), &VariableValue::Pos(1, 1));
+        assert_eq!(s.get_variable("p").unwrap(), &VariableValue::Pos(Position::new(1, 1)));
         assert_eq!(s.get_variable("s").unwrap(), &VariableValue::String("str".to_string()));
         assert_eq!(s.get_variable("c").unwrap(), &VariableValue::Color(Rgb([255,255,255])));
         assert_eq!(s.get_variable("e").unwrap(), &VariableValue::Effect(Effect::Blur));
@@ -192,7 +192,7 @@ mod tests {
     fn test_update_variable() {
         let mut s = Stack::new();
         s.add_variable("i".to_string(), VariableValue::Int(1));                                     // 1
-        s.add_variable("p".to_string(), VariableValue::Pos(1, 1));                                  // (1,1)
+        s.add_variable("p".to_string(), VariableValue::Pos(Position::new(1, 1)));                                  // (1,1)
         s.add_variable("s".to_string(), VariableValue::String("str".to_string()));                  // "str"
         s.add_variable("c".to_string(), VariableValue::Color(Rgb([255,255,255])));                  // #FFFFFF
         s.add_variable("e".to_string(), VariableValue::Effect(Effect::Blur));                       // blurred
@@ -200,7 +200,7 @@ mod tests {
         s.add_variable("vi".to_string(), VariableValue::Vec(vec![VariableValue::Int(1).to_var()])); // [1]
 
         s.update_variable("i",  VariableValue::Int(2));                                    // 2
-        s.update_variable("p",  VariableValue::Pos(2, 2));                                 // (2,2)
+        s.update_variable("p",  VariableValue::Pos(Position::new(1, 1)));                                 // (2,2)
         s.update_variable("s",  VariableValue::String("STR".to_string()));                 // "STR"
         s.update_variable("c",  VariableValue::Color(Rgb([0,0,0])));                       // #000000
         s.update_variable("e",  VariableValue::Effect(Effect::Inverse));                   // inversed
@@ -208,7 +208,7 @@ mod tests {
         s.update_variable("vi", VariableValue::Vec(vec![VariableValue::Int(2).to_var()])); // [2]
 
         assert_eq!(s.get_variable("i").unwrap(), &VariableValue::Int(2));
-        assert_eq!(s.get_variable("p").unwrap(), &VariableValue::Pos(2, 2));
+        assert_eq!(s.get_variable("p").unwrap(), &VariableValue::Pos(Position::new(1, 1)));
         assert_eq!(s.get_variable("s").unwrap(), &VariableValue::String("STR".to_string()));
         assert_eq!(s.get_variable("c").unwrap(), &VariableValue::Color(Rgb([0,0,0])));
         assert_eq!(s.get_variable("e").unwrap(), &VariableValue::Effect(Effect::Inverse));

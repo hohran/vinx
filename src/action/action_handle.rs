@@ -6,6 +6,7 @@ pub enum ActionHandle {
     Enable(String),
     Disable(String),
     Toggle(String),
+    Stop,
 }
 
 impl ActionHandle {
@@ -14,10 +15,15 @@ impl ActionHandle {
             ActionHandle::Enable(n) => n,
             ActionHandle::Disable(n) => n,
             ActionHandle::Toggle(n) => n,
+            _ => panic!("error: we should change the name of action handle because it is now not only for actions"), // FIXME TODO TODO
         }
     }
 
-    pub fn trigger(&self, actions: &mut Vec<Action>) {
+    /// returns if the whole program should stop
+    pub fn trigger(&self, actions: &mut Vec<Action>) -> bool {
+        if let ActionHandle::Stop = self {
+            return true;
+        }
         for a in actions.iter_mut() {
             let Some(name) = a.get_name() else { continue };
             if name != self.get_action_name() { continue }
@@ -31,14 +37,20 @@ impl ActionHandle {
                         a.enable();
                     }
                 }
+                ActionHandle::Stop => panic!("UNREACHABLE")
             }
         }
+        false
     }
 }
 
-pub fn process_action_handles(handles: &mut Vec<ActionHandle>, actions: &mut Vec<Action>) {
+/// returns if the whole program should stop
+pub fn process_action_handles(handles: &mut Vec<ActionHandle>, actions: &mut Vec<Action>) -> bool {
     for h in handles.iter() {
-        h.trigger(actions);
+        if h.trigger(actions) {
+            return true;
+        }
     }
     handles.clear();
+    false
 }

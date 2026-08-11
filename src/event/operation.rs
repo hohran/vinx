@@ -1,20 +1,40 @@
 use std::fmt::{Debug, Display};
 
-use crate::{context::Context, event::{Event, builtins::Builtin, event::{Operation, EventEffect}}, translator::{MemberDefNew, Sequence, Signature, StructureTemplate}, variable::{Scope, Stack, Variable, VariableType}};
+use crate::{event::{Event, builtins::Builtin, event::{EventEffect, Operation}}, translator::{Sequence, Signature, parser::OperationMember}, variable::{Scope, Stack, Variable, VariableType}};
 
-pub type Operations = Vec<OperationTemplate>;
+pub type Operations = Vec<OperationTemplateEnum>;
 
 #[derive(Debug,Clone)]
 pub struct OperationTemplate {
     id: usize,
     pub signature: Signature,
     effect: EventEffect,
-    members: Vec<MemberDefNew>,
+    members: Vec<OperationMember>,
     result: Option<VariableType>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum TopLevelOperation {
+    LoadFile,
+    DoNotSave,
+}
+
+pub enum OperationTemplateEnum {
+    Standard(OperationTemplate),
+    TopLevel(TopLevelOperation),
+}
+
+impl OperationTemplateEnum {
+    pub fn get(&self) -> &OperationTemplate {
+        let Self::Standard(op) = self else {
+            panic!("error: tried to get a top-level operation"); // TODO: friendlify
+        };
+        op
+    }
+}
+
 impl OperationTemplate {
-    pub fn new(id: usize, signature: Signature, events: Vec<Event>, members: Vec<MemberDefNew>, result: Option<VariableType>) -> Self {
+    pub fn new(id: usize, signature: Signature, events: Vec<Event>, members: Vec<OperationMember>, result: Option<VariableType>) -> Self {
         Self { id, effect: EventEffect::Composed(events), members, signature, result }
     }
 
@@ -44,42 +64,32 @@ impl OperationTemplate {
         self.signature.structure_param_id.as_ref()
     }
 
-    pub fn instantiate(&self, params: Vec<Variable>, context: &mut Context, operations: &Operations, structures: &Vec<StructureTemplate>, stack: &mut Stack) -> Operation {
-        // // println!("instantiate op {} with {params:?}", self.id);
-        // if self.members.is_empty() {
-        //     return Event::new(self.id, params, EventEffect::Composed(self.events.clone()), Scope::new());
-        // }
-        // stack.push();
-        // for i in 0..params.len() {
-        //     let name = self.signature.params[i].clone();
-        //     let value = params[i].get_value(stack).clone();
-        //     stack.add_variable(name, value);
-        // }
-        // let mut members = Scope::new();
-        // // TODO: refactor
-        // for (name,val,ps) in &self.members {
-        //     let member_val = match val {
-        //         SequenceValue::Operation(id) => {
-        //             operations[*id]
-        //                 .instantiate(ps.clone(), context, operations, structures, stack)
-        //                 .process(context, stack, &mut vec![], operations)
-        //                 .expect("error: did not have value")
-        //         }
-        //         SequenceValue::Structure(id) => {
-        //             let val = structures[*id].instantiate(ps.clone(), context, operations, structures, stack);
-        //             VariableValue::Structure(val)
-        //         }
-        //         SequenceValue::Value(_) => {
-        //             assert_eq!(ps.len(), 1, "only 1 param for value");
-        //             ps[0].get_value(stack).clone()
-        //         }
-        //     };
-        //     members.insert(name.clone(), member_val.clone());
-        //     stack.add_variable(name.clone(), member_val);
-        // }
-        // stack.pop();
-        // if self.events.len() == 1 && matches!(self.events[0], EventAction::Call())
-        Operation::new(self.id, params, self.effect.clone(), Stack::scope_from_members(&self.members))
+    pub fn instantiate(&self, params: Vec<Variable>) -> Operation {
+        let Some(result) = &self.result else {
+            return Operation::new(self.id, params, self.effect.clone(), None, Stack::scope_from_members(&self.members))
+        };
+        let return_type = if let Some(binding) = result.get_binding() {
+            // find a parameter that has this binding
+            // take the type from passed params
+            let pos = self.signature.sequence.get_types().iter().position(|t| t.get_binding() == Some(binding)).unwrap();
+            let type_depth = self.signature.sequence.get_types()[pos].get_depth();
+            let mut param_type = params[pos].get_type();
+            // we need to unwrap this type to what the binding represents
+            // let's imagine that the signature is
+            // `top [Any(0)]`
+            // then we need to remove one level of depth from the passed parameter type
+            // so `top [Color]` would imply the mapping Any(0) -> Color
+            param_type = param_type.unwrap_depth(type_depth).clone();
+            // finally we wrap the variable type of the binding to the actual depth of the return type
+            // `make Any(0) a vector` with return type `[Any(0)]`
+            // would mean that whatever type of parameter is passed, we need to wrap with one level
+            // of depth.
+            param_type.wrap_depth(result.get_depth());
+            Some(param_type)
+        } else {
+            Some(result.clone())
+        };
+        Operation::new(self.id, params, self.effect.clone(), return_type, Stack::scope_from_members(&self.members))
     }
 
     pub fn push_to_stack(&self, params: &Vec<Variable>, variables: &Scope, stack: &mut Stack) {

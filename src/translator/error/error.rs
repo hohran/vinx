@@ -8,6 +8,8 @@ pub enum CompilationError {
     ForbiddenVariableName(String, Location),
     UnknownVariableName(String, Location),
     FileNotFound(String, Option<Location>),
+    MemberUsedBeforeDefinition(String, Location),
+    DuplicateMemberName(String, Location, Location),
     RecursiveFileDependency(String, String, Location),
     MultipleMainIterators(Location),
     VagueDefinition(Location, Location, Location), // the definition is neither structure nor operation
@@ -62,6 +64,12 @@ impl CompilationError {
                 print_err!("multiple iterators set as main");
                 eprintln!("{}", loc.get_source());
             }
+            Self::DuplicateMemberName(name, loc1, first_loc) => {
+                print_err!("duplicate definition of local variable `{name}`");
+                eprint!("{}", loc1.get_source());
+                print_note!("first defined here:");
+                eprint!("{}", first_loc.get_concise_source());
+            }
             Self::VagueDefinition(sign_loc, first_seq_loc, first_met_loc) => {
                 print_err!("definition is neither operation, nor structure");
                 eprint!("{}", sign_loc.get_source());
@@ -69,6 +77,11 @@ impl CompilationError {
                 eprint!("{}", first_seq_loc.get_concise_source());
                 print_note!("nested definitions imply it should be a structure:");
                 eprintln!("{}", first_met_loc.get_concise_source());
+            }
+            Self::MemberUsedBeforeDefinition(name, loc) => {
+                print_err!("variable {name} is used before its definition");
+                eprint!("{}", loc.get_source());
+                print_note!("if you wish to access a global variable of the same name, rename one of them");
             }
         }
     }
