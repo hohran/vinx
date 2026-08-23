@@ -1,272 +1,183 @@
 use crate::action::ActionHandle;
+use crate::context;
 use crate::context::Context;
 use crate::variable::Variable;
-use crate::variable::{Stack, Direction, VariableValue};
+use crate::variable::{Direction, VariableValue};
 use crate::video::Drawable;
 
-pub type Builtin = fn(&mut Context, &mut Stack, &mut Vec<Variable>, &mut Vec<ActionHandle>) -> Option<VariableValue>;
+/// Function callable both at compiletime and runtime.
+/// Such function can most notibly access the current stack of the program.
+pub type Builtin = fn(&mut dyn context::Context, &mut Vec<Variable>) -> Option<VariableValue>;
 
-pub struct Runtime<'a> {
-    pub context: Context<'a>,
-    pub stack: Stack,
-    pub action_handles: Vec<ActionHandle>
-}
+/// Function callable only at runtime.
+/// This allows the function to access the current frame or change the flow of program with Handles.
+pub type BuiltinRuntime = fn(&mut context::Runtime, &mut Vec<Variable>) -> Option<VariableValue>;
+
+/// Function callable only at compiletime.
+/// Such function can access global options of the whole program.
+pub type BuiltinCompiletime = fn(&mut context::Compiletime, &mut Vec<Variable>) -> Option<VariableValue>;
 
 pub fn expect_param_count(operation_name: &str, params: &Vec<Variable>, expected: usize) {
     assert_eq!(params.len(), expected, "error: function {operation_name} expected {expected} parameters, got {}", params.len());
 }
 
-pub fn print(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
+// both runtime and compiletime
+
+pub fn print(context: &mut dyn context::Context, params: &mut Vec<Variable>) -> Option<VariableValue> {
     expect_param_count("print", params, 1);
-    let par1 = params[0].get_value(stack);
+    let par1 = context.get_value(&params[0]);
     let s = par1.into_string();
     println!("{s}");
     None
 }
 
-pub fn activate(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
-    let op_name = "activate";
-    expect_param_count(op_name, params, 1);
-    let par1 = params[0].get_value(stack);
-    let label = par1.into_string();
-    action_handles.push(ActionHandle::Enable(label.to_string()));
+pub fn debug(context: &mut dyn context::Context, params: &mut Vec<Variable>) -> Option<VariableValue> {
+    expect_param_count("debug", params, 1);
+    let param = &params[0];
+    let name = param.get_name();
+    let val = context.get_value(param);
+    println!("{name}: {val}");
     None
 }
 
-pub fn stop(_context: &mut Context, _stack: &mut Stack, _params: &mut Vec<Variable>, action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
-    action_handles.push(ActionHandle::Stop);
-    None
-}
-
-pub fn deactivate(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
-    let op_name = "deactivate";
-    expect_param_count(op_name, params, 1);
-    let par1 = params[0].get_value(stack);
-    let label = par1.into_string();
-    action_handles.push(ActionHandle::Disable(label.to_string()));
-    None
-}
-
-pub fn toggle_activeness(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
-    let op_name = "toggle";
-    expect_param_count(op_name, params, 1);
-    let par1 = params[0].get_value(stack);
-    let label = par1.into_string();
-    action_handles.push(ActionHandle::Toggle(label.to_string()));
-    None
-}
-
-pub fn add_to(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
+pub fn add_to(context: &mut dyn context::Context, params: &mut Vec<Variable>) -> Option<VariableValue> {
     expect_param_count("add", params, 2);
-    let v1 = &params[0].get_value(stack);
-    let v2 = &params[1].get_value(stack);
-    let i1 = v1.into_int();
-    let mut i2 = v2.into_int();
-    i2 = i2.saturating_add(i1);
-    params[1].set_value(stack, VariableValue::Int(i2));
+    let i1 = context.get_value(&params[0]).into_int();
+    let i2 = context.get_value_mut(&mut params[1]).into_int_mut();
+    *i2 = i2.saturating_add(i1);
     None
 }
 
-pub fn sub(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
+pub fn plus(context: &mut dyn context::Context, params: &mut Vec<Variable>) -> Option<VariableValue> {
+    expect_param_count("plus", params, 2);
+    let i1 = context.get_value(&params[0]).into_int();
+    let i2 = context.get_value(&params[1]).into_int();
+    Some(VariableValue::Int(i1.saturating_add(i2)))
+}
+
+pub fn sub(context: &mut dyn context::Context, params: &mut Vec<Variable>) -> Option<VariableValue> {
     expect_param_count("sub", params, 2);
-    let v1 = &params[0].get_value(stack);
-    let v2 = &params[1].get_value(stack);
-    let i1 = v1.into_int();
-    let mut i2 = v2.into_int();
-    i2 = i2.saturating_sub(i1);
-    params[1].set_value(stack, VariableValue::Int(i2));
+    let i1 = context.get_value(&params[0]).into_int();
+    let i2 = context.get_value_mut(&mut params[1]).into_int_mut();
+    *i2 = i2.saturating_sub(i1);
     None
 }
 
-pub fn set(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
+pub fn minus(context: &mut dyn context::Context, params: &mut Vec<Variable>) -> Option<VariableValue> {
+    expect_param_count("minus", params, 2);
+    let i1 = context.get_value(&params[0]).into_int();
+    let i2 = context.get_value(&params[1]).into_int();
+    Some(VariableValue::Int(i1.saturating_sub(i2)))
+}
+
+pub fn set(context: &mut dyn context::Context, params: &mut Vec<Variable>) -> Option<VariableValue> {
     expect_param_count("set", params, 2);
     let v2 = &params[1];
-    let new_val = v2.get_value(stack).clone();
+    let new_val = context.get_value(v2).clone();
     let v1 = &mut params[0];
-    v1.set_value(stack, new_val);
+    context.set_value(v1, new_val);
     None
 }
 
-pub fn top_into(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
+pub fn top_into(context: &mut dyn context::Context, params: &mut Vec<Variable>) -> Option<VariableValue> {
     expect_param_count("top into", params, 2);
-    let par1 = &params[0].get_value(stack);
+    let par1 = context.get_value(&params[0]);
     let v = par1.into_vec();
     if v.is_empty() { panic!("error: empty vector"); }
-    let top = v[0].get_value(stack).clone();
-    params[1].set_value(stack, top);
+    let top = context.get_value(&v[0]).clone();
+    context.set_value(&mut params[1], top);
     None
 }
 
-pub fn top(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
+pub fn top(context: &mut dyn context::Context, params: &mut Vec<Variable>) -> Option<VariableValue> {
     expect_param_count("top", params, 1);
-    let v = &params[0].get_value(stack).into_vec();
+    let v = context.get_value(&params[0]).into_vec();
     if v.is_empty() { panic!("error: empty vector"); }
-    Some(v[0].get_value(stack).clone())
+    Some(context.get_value(&v[0]).clone())
 }
 
-pub fn rotate_vec(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
+pub fn rotate_vec(context: &mut dyn context::Context, params: &mut Vec<Variable>) -> Option<VariableValue> {
     expect_param_count("rotate", params, 3);
-    let par1 = params[0].get_value(stack);
-    let par2 = params[1].get_value(stack);
-    let par3 = params[2].get_value(stack);
-    let mut v = par1.into_vec().clone();
-    if v.is_empty() { return None; }
-    let d = par2.into_direction();
-    let step = par3.into_int();
+    let d = context.get_value(&params[1]).into_direction();
+    let step = context.get_value(&params[2]).into_int();
+    let v = context.get_value_mut(&mut params[0]).into_vec_mut();
     match d {
         Direction::Left => {
-            for _ in 0..step {
-                let e = v.remove(0);
-                v.push(e);
-            }
+            v.rotate_left(step as usize);
         }
         Direction::Right => {
-            for _ in 0..step {
-                if let Some(e) = v.pop() {
-                    v.insert(0, e);
-                }
-            }
+            v.rotate_right(step as usize);
         }
         _ => {
-            panic!("error: rotate vec: vector can only be rotated to left or right");
+            panic!("error: rotate vec: vector can only be rotated left or right");
         }
     }
-    params[0].set_value(stack, VariableValue::Vec(v));
     None
 }
 
-pub fn get_frame(context: &mut Context, _stack: &mut Stack, _params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
-    if context.is_empty() { 
-        panic!("error: cannot return frame when context is empty");
-    }
-    // return None; } // TODO: should we really return None in here?
-    let frame = context.get_current_frame();
-    Some(VariableValue::Image(frame.clone()))
+// pub fn move_pos_phase(context: &mut context::Context, params: &mut Vec<Variable>) -> Option<VariableValue> {
+//     expect_param_count("move", params, 3);
+//     if context.is_empty() { return None; } // TODO: what to do with wrapping in preprocessing?
+//     let par1 = context.get_value(&params[0]);
+//     let par2 = context.get_value(&params[1]);
+//     let par3 = context.get_value(&params[2]);
+//     let mut pos = par1.into_pos();
+//     let d = par2.into_direction();
+//     let step = par3.into_int();
+//     let width = context.get_width() as i32;
+//     let height = context.get_height() as i32;
+//     match d {
+//         Direction::Left => {
+//             pos.x = (pos.x-step).rem_euclid(width); 
+//         }
+//         Direction::Right => { 
+//             pos.x = (pos.x+step).rem_euclid(width); 
+//         }
+//         Direction::Down => { 
+//             pos.y = (pos.y+step).rem_euclid(height); 
+//         }
+//         Direction::Up => {
+//             pos.y = (pos.y-step).rem_euclid(height); 
+//         }
+//     }
+//     context.set_value(&params[0], VariableValue::Pos(pos));
+//     None
+// }
+
+pub fn get_value(context: &mut dyn context::Context, params: &mut Vec<Variable>) -> Option<VariableValue> {
+    Some(context.get_value(&params[0]).clone())
 }
 
-pub fn draw_rect(context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
-    expect_param_count("draw rectangle", params, 3);
-    if context.is_empty() { return None; }
-    let par1 = &params[0].get_value(stack);
-    let par2 = &params[1].get_value(stack);
-    let par3 = &params[2].get_value(stack);
-    let c = par1.into_color();
-    let top_left = par2.into_pos();
-    let bot_right = par3.into_pos();
-    let frame = context.get_current_frame_mut();
-    frame.draw_rect((top_left.x as usize,top_left.y as usize), (bot_right.x as usize,bot_right.y as usize), c);
-    None
-}
+// pub fn move_pos(context: &mut context::Context, params: &mut Vec<Variable>) -> Option<VariableValue> {
+//     expect_param_count("restricted move", params, 3);
+//     if context.is_empty() { return None; }
+//     let par1 = context.get_value(&params[0]);
+//     let par2 = context.get_value(&params[1]);
+//     let par3 = context.get_value(&params[2]);
+//     let mut pos = par1.into_pos();
+//     let d = par2.into_direction();
+//     let step = par3.into_int();
+//     let width = context.get_width() as i32;
+//     let height = context.get_height() as i32;
+//     match d {
+//         Direction::Left =>
+//             pos.x = (pos.x.saturating_sub(step)).max(width),
+//         Direction::Right =>
+//             pos.x = (pos.x.saturating_add(step)).min(width),
+//         Direction::Down =>
+//             pos.y = (pos.y.saturating_add(step)).min(height),
+//         Direction::Up =>
+//             pos.y = (pos.y.saturating_sub(step)).max(height),
+//     }
+//     context.set_value(&params[0], VariableValue::Pos(pos));
+//     None
+// }
 
-pub fn _draw_rect(r: &mut Runtime, params: &mut Vec<Variable>) -> Option<VariableValue> {
-    expect_param_count("draw rectangle", params, 3);
-    if r.context.is_empty() { return None; }
-    let par1 = &params[0].get_value(&r.stack);
-    let par2 = &params[1].get_value(&r.stack);
-    let par3 = &params[2].get_value(&r.stack);
-    let c = par1.into_color();
-    let top_left = par2.into_pos();
-    let bot_right = par3.into_pos();
-    let frame = r.context.get_current_frame_mut();
-    frame.draw_rect((top_left.x as usize,top_left.y as usize), (bot_right.x as usize,bot_right.y as usize), c);
-    None
-}
-
-pub fn draw_effect_rect(context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
-    expect_param_count("draw rectangle (effect)", params, 3);
-    if context.is_empty() { return None; }
-    let par1 = &params[0].get_value(stack);
-    let par2 = &params[1].get_value(stack);
-    let par3 = &params[2].get_value(stack);
-    let e = par1.into_effect();
-    let top_left = par2.into_pos();
-    let bot_right = par3.into_pos();
-    let frame = context.get_current_frame_mut();
-    frame.draw_effect_rect((top_left.x as usize,top_left.y as usize), (bot_right.x as usize,bot_right.y as usize), e);
-    None
-}
-
-pub fn draw_rect_outline(context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
-    expect_param_count("draw rectangle", params, 3);
-    if context.is_empty() { return None; }
-    let par1 = &params[0].get_value(stack);
-    let par2 = &params[1].get_value(stack);
-    let par3 = &params[2].get_value(stack);
-    let c = par1.into_color();
-    let top_left = par2.into_pos();
-    let bot_right = par3.into_pos();
-    let frame = context.get_current_frame_mut();
-    frame.draw_rect_outline((top_left.x as usize,top_left.y as usize), (bot_right.x as usize,bot_right.y as usize), c);
-    None
-}
-
-pub fn move_pos_phase(context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
-    expect_param_count("move", params, 3);
-    if context.is_empty() { return None; } // TODO: what to do with wrapping in preprocessing?
-    let par1 = &params[0].get_value(stack);
-    let par2 = &params[1].get_value(stack);
-    let par3 = &params[2].get_value(stack);
-    let mut pos = par1.into_pos();
-    let d = par2.into_direction();
-    let step = par3.into_int();
-    let width = context.get_width() as i32;
-    let height = context.get_height() as i32;
-    match d {
-        Direction::Left => {
-            pos.x = (pos.x-step).rem_euclid(width); 
-        }
-        Direction::Right => { 
-            pos.x = (pos.x+step).rem_euclid(width); 
-        }
-        Direction::Down => { 
-            pos.y = (pos.y+step).rem_euclid(height); 
-        }
-        Direction::Up => {
-            pos.y = (pos.y-step).rem_euclid(height); 
-        }
-    }
-    params[0].set_value(stack, VariableValue::Pos(pos));
-    None
-}
-
-pub fn get_value(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
-    Some(params[0].get_value(stack).clone())
-}
-
-pub fn move_pos(context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
-    expect_param_count("restricted move", params, 3);
-    if context.is_empty() { return None; }
-    let par1 = &params[0].get_value(stack);
-    let par2 = &params[1].get_value(stack);
-    let par3 = &params[2].get_value(stack);
-    let mut pos = par1.into_pos();
-    let d = par2.into_direction();
-    let step = par3.into_int();
-    let width = context.get_width() as i32;
-    let height = context.get_height() as i32;
-    match d {
-        Direction::Left =>
-            pos.x = (pos.x.saturating_sub(step)).max(width),
-        Direction::Right =>
-            pos.x = (pos.x.saturating_add(step)).min(width),
-        Direction::Down =>
-            pos.y = (pos.y.saturating_add(step)).min(height),
-        Direction::Up =>
-            pos.y = (pos.y.saturating_sub(step)).max(height),
-    }
-    params[0].set_value(stack, VariableValue::Pos(pos));
-    None
-}
-
-pub fn move_by(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
+pub fn move_by(context: &mut dyn context::Context, params: &mut Vec<Variable>) -> Option<VariableValue> {
     expect_param_count("move by", params, 2);
-    let par1 = &params[0].get_value(stack);
-    let par2 = &params[1].get_value(stack);
-    let mut pos = par1.into_pos();
-    let diff = par2.into_pos();
-    pos.x = pos.x.saturating_add(diff.x);
-    pos.y = pos.y.saturating_add(diff.y);
-    params[0].set_value(stack, VariableValue::Pos(pos));
+    let diff = context.get_value(&params[1]).into_pos();
+    let pos = context.get_value_mut(&mut params[0]).into_pos_mut();
+    pos.move_by(&diff);
     None
 }
 
@@ -276,56 +187,52 @@ pub mod image {
     use super::*;
     use ::image;
 
-    pub fn draw_at(context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
+    pub fn draw_at(context: &mut context::Runtime, params: &mut Vec<Variable>) -> Option<VariableValue> {
         expect_param_count("draw image at", params, 2);
-        if context.is_empty() { return None; }
-        let par1 = params[0].get_value(stack);
-        let par2 = &params[1].get_value(stack);
-        let img = par1.into_image();
+        // if context.is_empty() { return None; }
+        let par1 = context.get_value(&params[0]);
+        let par2 = context.get_value(&params[1]);
+        let img = par1.into_image().clone(); // TODO: uff we should be able not to clone this
         let pos = par2.into_pos();
         let frame = context.get_current_frame_mut();
-        image::imageops::overlay(frame, img, pos.x.into(), pos.y.into());
+        image::imageops::overlay(frame, &img, pos.x.into(), pos.y.into());
         None
     }
 
-    pub fn draw_into(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
+    pub fn draw_into(context: &mut dyn context::Context, params: &mut Vec<Variable>) -> Option<VariableValue> {
         expect_param_count("draw into image", params, 3);
-        let par1 = params[0].get_value(stack);
+        let par1 = context.get_value(&params[0]);
         let color = par1.into_color();
-        let par2 = params[1].get_value(stack);
+        let par2 = context.get_value(&params[1]);
         let r = par2.into_rectangle();
-        let par3 = params[2].get_value_mut(stack);
-        let VariableValue::Image(img) = par3 else { panic!() };
+        let img = context.get_value_mut(&mut params[2]).into_image_mut();
         img.draw_rect((r.top_left.x as usize,r.top_left.y as usize), (r.bot_right.x as usize, r.bot_right.y as usize), color);
         None
     }
 
-    pub fn save_as(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
+    pub fn save_as(context: &mut dyn context::Context, params: &mut Vec<Variable>) -> Option<VariableValue> {
         expect_param_count("save image as", params, 2);
-        let par1 = params[0].get_value(stack);
-        let par2 = &params[1].get_value(stack);
-        let img = par1.into_image();
-        let name = par2.into_string();
+        let img = context.get_value(&params[0]).into_image();
+        let name = context.get_value(&params[1]).into_string();
         if let Err(e) = img.save(name) {
             eprintln!("warning: could not save image as {name}: {e}");
         }
         None
     }
 
-    pub fn load_from(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
+    pub fn load_from(context: &mut dyn context::Context, params: &mut Vec<Variable>) -> Option<VariableValue> {
         expect_param_count("load image", params, 1);
-        let par1 = &params[0].get_value(stack);
-        let name = par1.into_string();
+        let name = context.get_value(&params[0]).into_string();
         match image::open(name) {
             Ok(i) => Some(VariableValue::Image(i.into_rgb8())),
             Err(e) => panic!("error: could not load image {name}: {e}"),
         }
     }
 
-    pub fn take_from(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
+    pub fn take_from(context: &mut dyn context::Context, params: &mut Vec<Variable>) -> Option<VariableValue> {
         expect_param_count("take from", params, 2);
-        let par1 = &params[0].get_value(stack);
-        let par2 = &params[1].get_value(stack);
+        let par1 = context.get_value(&params[0]);
+        let par2 = context.get_value(&params[1]);
         let rect = par1.into_rectangle();
         let top_left = rect.top_left;
         let mut bot_right = rect.bot_right;
@@ -353,14 +260,11 @@ pub mod image {
         Some(VariableValue::Image(out_img))
     }
 
-    pub fn colored(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
+    pub fn colored(context: &mut dyn context::Context, params: &mut Vec<Variable>) -> Option<VariableValue> {
         expect_param_count("colored image", params, 3);
-        let par1 = &params[0].get_value(stack);
-        let par2 = &params[1].get_value(stack);
-        let par3 = &params[2].get_value(stack);
-        let col = par1.into_color();
-        let width = par2.into_int();
-        let height = par3.into_int();
+        let col = context.get_value(&params[0]).into_color();
+        let width = context.get_value(&params[1]).into_int();
+        let height = context.get_value(&params[2]).into_int();
         if width < 0 {
             panic!("error: negative image width: {width}") // TODO: user friendlify
         }
@@ -380,18 +284,18 @@ pub mod rectangle {
 
     use super::*;
 
-    pub fn new(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
+    pub fn new(context: &mut dyn context::Context, params: &mut Vec<Variable>) -> Option<VariableValue> {
         expect_param_count("new rectangle", params, 2);
-        let top_left  = params[0].get_value(stack).into_pos();
-        let bot_right = params[1].get_value(stack).into_pos();
+        let top_left  = context.get_value(&params[0]).into_pos();
+        let bot_right = context.get_value(&params[1]).into_pos();
         Some(VariableValue::Rectangle(Rectangle::new(top_left, bot_right)))
     }
 
-    pub fn draw(context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
+    pub fn draw(context: &mut context::Runtime, params: &mut Vec<Variable>) -> Option<VariableValue> {
         expect_param_count("draw struct rectangle", params, 2);
         if context.is_empty() { return None; }
-        let par1 = &params[0].get_value(stack);
-        let par2 = &params[1].get_value(stack);
+        let par1 = context.get_value(&params[0]);
+        let par2 = context.get_value(&params[1]);
         let c = par1.into_color();
         let r = par2.into_rectangle();
         let top_left = r.top_left;
@@ -401,11 +305,11 @@ pub mod rectangle {
         None
     }
 
-    pub fn draw_outline(context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
+    pub fn draw_outline(context: &mut context::Runtime, params: &mut Vec<Variable>) -> Option<VariableValue> {
         expect_param_count("draw rectangle outline", params, 2);
         if context.is_empty() { return None; }
-        let par1 = &params[0].get_value(stack);
-        let par2 = &params[1].get_value(stack);
+        let par1 = context.get_value(&params[0]);
+        let par2 = context.get_value(&params[1]);
         let c = par1.into_color();
         let r = par2.into_rectangle();
         let top_left = r.top_left;
@@ -415,12 +319,11 @@ pub mod rectangle {
         None
     }
 
-    pub fn expand(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
+    pub fn expand(context: &mut dyn context::Context, params: &mut Vec<Variable>) -> Option<VariableValue> {
         expect_param_count("expand struct rectangle", params, 2);
-        let par2 = &params[1].get_value(stack);
+        let par2 = context.get_value(&params[1]);
         let step = par2.into_int();
-        let par1 = &mut params[0].get_value_mut(stack);
-        let r = par1.into_rectangle_mut();
+        let r = context.get_value_mut(&mut params[0]).into_rectangle_mut();
         r.top_left.x = r.top_left.x.saturating_sub(step);
         r.top_left.y = r.top_left.y.saturating_sub(step);
         r.bot_right.x = r.bot_right.x.saturating_add(step);
@@ -428,17 +331,17 @@ pub mod rectangle {
         None
     }
 
-    pub fn get_corner(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
+    pub fn get_corner(context: &mut dyn context::Context, params: &mut Vec<Variable>) -> Option<VariableValue> {
         expect_param_count("get corner", params, 1);
-        let r = params[0].get_value(stack).into_rectangle();
+        let r = context.get_value(&params[0]).into_rectangle();
         Some(VariableValue::Pos(r.top_left))
     }
 
-    pub fn move_by(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
+    pub fn move_by(context: &mut dyn context::Context, params: &mut Vec<Variable>) -> Option<VariableValue> {
         expect_param_count("move rectangle", params, 2);
-        let par2 = &params[1].get_value(stack);
+        let par2 = context.get_value(&params[1]);
         let diff = par2.into_pos();
-        let r = params[0].get_value_mut(stack).into_rectangle_mut();
+        let r = context.get_value_mut(&mut params[0]).into_rectangle_mut();
         r.top_left.x = r.top_left.x.saturating_add(diff.x);
         r.top_left.y = r.top_left.y.saturating_add(diff.y);
         r.bot_right.x = r.bot_right.x.saturating_add(diff.x);
@@ -452,9 +355,9 @@ pub mod column {
 
     use super::*;
 
-    pub fn take(context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
+    pub fn take(context: &mut context::Runtime, params: &mut Vec<Variable>) -> Option<VariableValue> {
         expect_param_count("take column", params, 1);
-        let at = params[0].get_value(stack).into_int();
+        let at = context.get_value(&params[0]).into_int();
         let frame = context.get_current_frame();
         if at < 0 {
             panic!("error: attempted to take negative column")
@@ -463,18 +366,18 @@ pub mod column {
         Some(VariableValue::Column(col))
     }
 
-    pub fn append(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
+    pub fn append(context: &mut dyn context::Context, params: &mut Vec<Variable>) -> Option<VariableValue> {
         expect_param_count("append column", params, 2);
-        let col = params[0].get_value(stack).into_column().clone();
-        let img = params[1].get_value_mut(stack).into_image_mut();
+        let col = context.get_value(&params[0]).into_column().clone();
+        let img = context.get_value_mut(&mut params[1]).into_image_mut();
         img.append_column(col.get());
         None
     }
 
-    pub fn prepend(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
+    pub fn prepend(context: &mut dyn context::Context, params: &mut Vec<Variable>) -> Option<VariableValue> {
         expect_param_count("prepend column", params, 2);
-        let col = params[0].get_value(stack).into_column().clone();
-        let img = params[1].get_value_mut(stack).into_image_mut();
+        let col = context.get_value(&params[0]).into_column().clone();
+        let img = context.get_value_mut(&mut params[1]).into_image_mut();
         img.prepend_column(col.get());
         None
     }
@@ -485,9 +388,9 @@ pub mod row {
 
     use super::*;
 
-    pub fn take(context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
+    pub fn take(context: &mut context::Runtime, params: &mut Vec<Variable>) -> Option<VariableValue> {
         expect_param_count("take column", params, 1);
-        let at = params[0].get_value(stack).into_int();
+        let at = context.get_value(&params[0]).into_int();
         let frame = context.get_current_frame();
         if at < 0 {
             panic!("error: attempted to take negative column")
@@ -496,19 +399,104 @@ pub mod row {
         Some(VariableValue::Row(row))
     }
 
-    pub fn append(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
+    pub fn append(context: &mut dyn context::Context, params: &mut Vec<Variable>) -> Option<VariableValue> {
         expect_param_count("append column", params, 2);
-        let row = params[0].get_value(stack).into_row().clone();
-        let img = params[1].get_value_mut(stack).into_image_mut();
+        let row = context.get_value(&params[0]).into_row().clone();
+        let img = context.get_value_mut(&mut params[1]).into_image_mut();
         img.append_row(row.get());
         None
     }
 
-    pub fn prepend(_context: &mut Context, stack: &mut Stack, params: &mut Vec<Variable>, _action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
+    pub fn prepend(context: &mut dyn context::Context, params: &mut Vec<Variable>) -> Option<VariableValue> {
         expect_param_count("prepend column", params, 2);
-        let row = params[0].get_value(stack).into_row().clone();
-        let img = params[1].get_value_mut(stack).into_image_mut();
+        let row = context.get_value(&params[0]).into_row().clone();
+        let img = context.get_value_mut(&mut params[1]).into_image_mut();
         img.prepend_row(row.get());
         None
     }
 }
+
+// runtime
+
+pub fn activate(context: &mut context::Runtime, params: &mut Vec<Variable>) -> Option<VariableValue> {
+    let op_name = "activate";
+    expect_param_count(op_name, params, 1);
+    let par1 = context.get_value(&params[0]);
+    let label = par1.into_string();
+    context.add_handle(ActionHandle::Enable(label.to_string()));
+    None
+}
+
+pub fn stop(context: &mut context::Runtime, _params: &mut Vec<Variable>) -> Option<VariableValue> {
+    context.add_handle(ActionHandle::Stop);
+    None
+}
+
+pub fn deactivate(context: &mut context::Runtime, params: &mut Vec<Variable>) -> Option<VariableValue> {
+    let op_name = "deactivate";
+    expect_param_count(op_name, params, 1);
+    let par1 = context.get_value(&params[0]);
+    let label = par1.into_string();
+    context.add_handle(ActionHandle::Disable(label.to_string()));
+    None
+}
+
+pub fn toggle_activeness(context: &mut context::Runtime, params: &mut Vec<Variable>) -> Option<VariableValue> {
+    let op_name = "toggle";
+    expect_param_count(op_name, params, 1);
+    let par1 = context.get_value(&params[0]);
+    let label = par1.into_string();
+    context.add_handle(ActionHandle::Toggle(label.to_string()));
+    None
+}
+
+pub fn get_frame(context: &mut context::Runtime, _params: &mut Vec<Variable>) -> Option<VariableValue> {
+    if context.is_empty() { 
+        panic!("error: cannot return frame when context is empty");
+    }
+    let frame = context.get_current_frame();
+    Some(VariableValue::Image(frame.clone()))
+}
+
+pub fn draw_rect(context: &mut context::Runtime, params: &mut Vec<Variable>) -> Option<VariableValue> {
+    expect_param_count("draw rectangle", params, 3);
+    if context.is_empty() { return None; }
+    let par1 = context.get_value(&params[0]);
+    let par2 = context.get_value(&params[1]);
+    let par3 = context.get_value(&params[2]);
+    let c = par1.into_color();
+    let top_left = par2.into_pos();
+    let bot_right = par3.into_pos();
+    let frame = context.get_current_frame_mut();
+    frame.draw_rect((top_left.x as usize,top_left.y as usize), (bot_right.x as usize,bot_right.y as usize), c);
+    None
+}
+
+pub fn draw_effect_rect(context: &mut context::Runtime, params: &mut Vec<Variable>) -> Option<VariableValue> {
+    expect_param_count("draw rectangle (effect)", params, 3);
+    if context.is_empty() { return None; }
+    let par1 = context.get_value(&params[0]);
+    let par2 = context.get_value(&params[1]);
+    let par3 = context.get_value(&params[2]);
+    let e = par1.into_effect();
+    let top_left = par2.into_pos();
+    let bot_right = par3.into_pos();
+    let frame = context.get_current_frame_mut();
+    frame.draw_effect_rect((top_left.x as usize,top_left.y as usize), (bot_right.x as usize,bot_right.y as usize), e);
+    None
+}
+
+pub fn draw_rect_outline(context: &mut context::Runtime, params: &mut Vec<Variable>) -> Option<VariableValue> {
+    expect_param_count("draw rectangle", params, 3);
+    if context.is_empty() { return None; }
+    let par1 = context.get_value(&params[0]);
+    let par2 = context.get_value(&params[1]);
+    let par3 = context.get_value(&params[2]);
+    let c = par1.into_color();
+    let top_left = par2.into_pos();
+    let bot_right = par3.into_pos();
+    let frame = context.get_current_frame_mut();
+    frame.draw_rect_outline((top_left.x as usize,top_left.y as usize), (bot_right.x as usize,bot_right.y as usize), c);
+    None
+}
+

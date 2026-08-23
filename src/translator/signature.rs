@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use super::{Word, Sequence};
-use crate::variable::VariableType;
+use crate::{translator::error::{CompilationError, Location}, variable::VariableType};
 
 /// Structure for handling signatures of operations and structures.
 ///
@@ -25,16 +25,16 @@ impl Signature {
     }
 
     /// For a method signature, set the id of the bound structure parameter
-    pub fn set_structure_param(&mut self, structure_id: usize) {
+    pub fn set_structure_param(&mut self, structure_id: usize) -> Result<(), CompilationError> {
         let Some(i) = self.structure_param_id else {
-            panic!("error: signature {self} is not bound to a structure")
-            // -- do we panic? or can we define methods not bound to structures?
+            return Err(CompilationError::UnboundMethod(self.clone()));
         };
         if self.iterators.contains(&i) {
             self.sequence.swap_type_at(i, VariableType::Vec(Box::new(VariableType::Structure(structure_id))));
         } else {
             self.sequence.swap_type_at(i, VariableType::Structure(structure_id));
         }
+        Ok(())
     }
 
     /// Set the types of given signature to `types`.
@@ -57,6 +57,11 @@ impl Signature {
                 on_param(param, types[i]);
             }
         }
+    }
+
+    /// Get the source code location of this signature.
+    pub fn get_location(&self) -> &Location {
+        self.sequence.get_location()
     }
 }
 

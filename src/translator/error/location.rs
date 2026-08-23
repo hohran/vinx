@@ -2,6 +2,7 @@ use std::{fmt::Display, io::BufRead};
 
 use crate::translator::ast::Range;
 
+#[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub struct Location {
     filepath: String,
     range: Range,
@@ -10,6 +11,10 @@ pub struct Location {
 impl Location {
     pub fn new(filepath: &str, range: Range) -> Self {
         return Self { filepath: filepath.to_string(), range }
+    }
+
+    pub fn default() -> Self {
+        Self { filepath: String::new(), range: Range::default() }
     }
 
     fn get_loc(&self, max_row_width: usize) -> String {

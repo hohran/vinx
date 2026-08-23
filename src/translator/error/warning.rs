@@ -4,7 +4,9 @@ use super::Location;
 
 pub enum Warning {
     RedundantFileLoad(String, Location),
-    OperationWithoutInterpretation(Signature, Location),
+    OperationWithoutInterpretation(Signature),
+    StructureWithoutInterpretation(Signature),
+    ExistingSignature(Signature),
 }
 
 impl Warning {
@@ -15,9 +17,17 @@ impl Warning {
                 eprintln!("file `{fp}` already loaded: skipping");
                 eprintln!("{}", loc.get_source());
             }
-            Self::OperationWithoutInterpretation(sig, loc) => {
+            Self::OperationWithoutInterpretation(sig) => {
                 eprintln!("operation `{sig}` does not have any interpretation");
-                eprintln!("{}", loc.get_source());
+                eprintln!("{}", sig.get_location().get_source());
+            }
+            Self::StructureWithoutInterpretation(sig) => {
+                eprintln!("structure `{sig}` does not have any interpretation");
+                eprintln!("{}", sig.get_location().get_source());
+            }
+            Self::ExistingSignature(sig) => {
+                eprintln!("signature `{}` already exists", sig.sequence);
+                eprintln!("{}", sig.get_location().get_source());
             }
         }
     }

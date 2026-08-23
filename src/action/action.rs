@@ -1,7 +1,6 @@
-// TODO:
-// actions need to be able to create local variables
-use super::{ActionHandle, Trigger};
-use crate::{context::Context, event::{Event, Operations}, translator::parser::OperationMember, variable::{Scope, Stack}};
+use super::Trigger;
+use crate::context::Context;
+use crate::{context::Runtime, event::{Event, Operations}, translator::parser::OperationMember, variable::Scope};
 
 /// Action is a set of events that triggers at specific timestamps.
 /// In vinx, actions are either periodical: `every 10 frames { ... }`, or onetime: `at 42 frames { ... }`.
@@ -52,13 +51,13 @@ impl Action {
     }
 
     /// Try to trigger this action
-    pub fn trigger(&mut self, context: &mut Context, stack: &mut Stack, operations: &Operations, action_handles: &mut Vec<ActionHandle>) {
-        stack.push_scope(self.create_member_scope()); {
-            while self.trigger.activate(stack) {
+    pub fn trigger(&mut self, context: &mut Runtime<'_>, operations: &Operations) {
+        context.push_scope_with(self.create_member_scope()); {
+            while self.trigger.activate(context.get_stack()) {
                 for event in &mut self.events {
-                    event.process(context, stack, action_handles, operations);
+                    event.process(context, operations);
                 }
             }
-        } stack.pop();
+        } context.pop_scope();
     }
 }

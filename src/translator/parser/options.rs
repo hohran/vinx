@@ -1,4 +1,5 @@
 /// Options are set from within the vinx program.
+#[derive(Debug, Clone, Copy)]
 pub struct Options {
     pub save_video: bool,
 }

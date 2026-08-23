@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone, Copy)]
 pub struct Range (tree_sitter::Point, tree_sitter::Point);
 impl Range {
     pub fn new(start: tree_sitter::Point, end: tree_sitter::Point) -> Self {
@@ -29,6 +29,14 @@ impl From<&tree_sitter::Node<'_>> for Range {
     fn from(value: &tree_sitter::Node) -> Self {
         let r = value.range();
         Self(r.start_point, r.end_point)
+    }
+}
+
+impl From<&Assignment> for Range {
+    fn from(value: &Assignment) -> Self {
+        let start = value.name.1.start_point();
+        let end = value.value.1.end_point();
+        Self(*start, *end)
     }
 }
 

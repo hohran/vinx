@@ -14,6 +14,11 @@ impl Position {
     pub fn default() -> Self {
         Self { x: 0, y: 0 }
     }
+
+    pub fn move_by(&mut self, other: &Self) {
+        self.x = self.x.saturating_add(other.x);
+        self.y = self.y.saturating_add(other.y);
+    }
 }
 
 impl Display for Position {

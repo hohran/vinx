@@ -1,6 +1,7 @@
 // TODO TODO TODO: assignments and variable definitions in actions/operations disallow to have a
 // sequence which returns a structure now! FIXME FIXME FIXME
 use crate::{event::{Event, Operation, OperationTemplate, OperationTemplateEnum}, translator::{SequenceValue, Signature, ast::{self, Range}, automata::Automaton, error::{CompilationError, Warning}, parser::parser::Parser, sequence::{SequenceType, StructureId}, type_constraints::TypeConstraints}, variable::VariableType};
+use crate::context::Context;
 
 pub type OperationMember = (String, VariableType); // name, type
 
@@ -9,7 +10,7 @@ impl Parser {
         let signature = self.parse_signature(&definition.signature)?;
         let (members,interpretations) = self.parse_operation_definition(definition, None)?;
         if interpretations.is_empty() {
-            self.warnings.push(Warning::OperationWithoutInterpretation(signature.clone(), self.get_location(&Range::from(definition))));
+            self.warn(Warning::OperationWithoutInterpretation(signature.clone()));
             return Ok(())
         }
         self.check_members(&members, definition)?;
@@ -71,15 +72,16 @@ impl Parser {
         Ok(())
     }
 
-    pub fn get_operation_members(&self, definition: &ast::Definition) -> Vec<String> {
+    pub fn get_operation_members(&mut self, definition: &ast::Definition) -> Result<Vec<String>, CompilationError> {
         let mut out = vec![];
         for stmt in &definition.body {
             let ast::definition::Statement::VarDefinition(var_def) = &stmt.0 else {
                 continue;
             };
             out.push(var_def.name.0.clone());
+            self.define_variable(var_def)?;
         }
-        out
+        Ok(out)
     }
 
     pub fn parse_operation_definition(&mut self, definition: &ast::Definition, aut: Option<&Automaton>) -> Result<(Vec<String>, Vec<Vec<TypeConstraints>>), CompilationError> {
@@ -93,6 +95,27 @@ impl Parser {
                     let member = self.get_var_definition(var_def, Some(member_id))?;
                     let member_type = VariableType::Any(member_id);
                     let member_name = var_def.name.0.to_string();
+
+                    // v- allow parameter types to be set explicitly... something like this -v
+                    // // we allow a 'redeclaration' of a parameter, only in a sense that we explicitly
+                    // // set its type.
+                    // //
+                    // // this is a valid code, that only specifies the type of $p.
+                    // // ```vinx
+                    // // move $self by $p := {
+                    // //   $p: Pos; ...
+                    // // }```
+                    // if self.context.add_variable(member_name.clone(), member.get_type().default()) {
+                    //     member_names.push(member_name.clone());
+                    // } else {
+                    //     // TODO: also check that we are only setting a parameter
+                    //     if !member.is_type_only() {
+                    //         return Err(CompilationError::TemporaryError(format!("duplicate member name in operation definition: {}", member_name)));
+                    //     }
+                    //     self.resolve_variables(1);
+                    // }
+                    // ^-----------------------------------------------^
+
                     member_names.push(member_name.clone());
                     // let (value, value_range) = &var_def.value;
                     // let (seq,_) = self.parse_sequence(&value)?;
@@ -101,16 +124,14 @@ impl Parser {
                     if ints.len() == 0 && let Some(aut) = aut {
                         ints = aut.get_interpretations(seq.get(), Some(&member_type), &self.operations);
                     }
-                    if !self.globals.add_variable(member_name.clone(), member_type.default()) {
+                    if !self.context.add_variable(member_name.clone(), member_type.default()) {
                         let first_defined_range = definition.find_variable_definition(&member_name);
                         return Err(CompilationError::DuplicateMemberName(member_name, self.get_location(&var_def.name.1), self.get_location(&first_defined_range)))
                     }
                 }
                 ast::definition::Statement::Assignment(var_def) => {
-                    let member_name = var_def.name.0.to_string();
-                    let Some(member_value) = self.globals.get_variable(&member_name) else {
-                        panic!("error: no variable {}", member_name); // TODO: friendlify
-                    };
+                    // let member_name = var_def.name.0.to_string();
+                    let member_value = self.get_variable_value(&var_def.name)?;
                     let (value,_) = &var_def.value;
                     let (seq,_) = self.parse_sequence(&value)?;
                     ints = self.automaton.get_interpretations(seq.get(), Some(&member_value.get_type()), &self.operations);
@@ -177,13 +198,13 @@ impl Parser {
         for (i,member) in members.iter().enumerate() {
             let index = already_set+i;
             let member_type = interpretation.at(index);
-            self.globals.update_variable(member, member_type.default());
+            self.context.update_variable(member, member_type.default());
         }
     }
 
     pub fn get_members(&self, members: &Vec<String>) -> Vec<OperationMember> {
         members.iter().map(|name| 
-            (name.clone(), self.globals.get_variable(name).expect(&format!("error: variable `{name}` not found")).get_type()))
+            (name.clone(), self.context.get_variable(name).expect(&format!("error: variable `{name}` not found")).get_type()))
             .collect()
     }
 
@@ -261,6 +282,6 @@ impl Parser {
 
     /// Update the type of every `signature` parameter on the stack.
     pub fn update_stack_with_signature(&mut self, signature: &Signature) {
-        signature.foreach(|p,t| self.globals.update_variable(p, t.default()));
+        signature.foreach(|p,t| self.context.update_variable(p, t.default()));
     }
 }

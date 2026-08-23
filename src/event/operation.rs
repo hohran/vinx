@@ -1,6 +1,6 @@
 use std::fmt::{Debug, Display};
 
-use crate::{event::{Event, builtins::Builtin, event::{EventEffect, Operation}}, translator::{Sequence, Signature, parser::OperationMember}, variable::{Scope, Stack, Variable, VariableType}};
+use crate::{event::{Event, event::{EventEffect, Func, Operation}}, translator::{Sequence, Signature, parser::OperationMember}, variable::{Scope, Stack, Variable, VariableType}};
 
 pub type Operations = Vec<OperationTemplateEnum>;
 
@@ -38,7 +38,7 @@ impl OperationTemplate {
         Self { id, effect: EventEffect::Composed(events), members, signature, result }
     }
 
-    pub fn from_builtin(id: usize, sequence: Sequence, builtin: Builtin, result: Option<VariableType>) -> Self {
+    pub fn from_builtin(id: usize, sequence: Sequence, builtin: Func, result: Option<VariableType>) -> Self {
         Self { id, signature: Signature::from(sequence), effect: EventEffect::Builtin(builtin), members: vec![], result }
     }
 
@@ -64,31 +64,36 @@ impl OperationTemplate {
         self.signature.structure_param_id.as_ref()
     }
 
+    pub fn compute_return_type(&self, params: &Vec<Variable>) -> Option<VariableType> {
+        self.result.as_ref().map(|r| self.signature.sequence.compute_return_type(r, &params))
+    }
+
     pub fn instantiate(&self, params: Vec<Variable>) -> Operation {
-        let Some(result) = &self.result else {
-            return Operation::new(self.id, params, self.effect.clone(), None, Stack::scope_from_members(&self.members))
-        };
-        let return_type = if let Some(binding) = result.get_binding() {
-            // find a parameter that has this binding
-            // take the type from passed params
-            let pos = self.signature.sequence.get_types().iter().position(|t| t.get_binding() == Some(binding)).unwrap();
-            let type_depth = self.signature.sequence.get_types()[pos].get_depth();
-            let mut param_type = params[pos].get_type();
-            // we need to unwrap this type to what the binding represents
-            // let's imagine that the signature is
-            // `top [Any(0)]`
-            // then we need to remove one level of depth from the passed parameter type
-            // so `top [Color]` would imply the mapping Any(0) -> Color
-            param_type = param_type.unwrap_depth(type_depth).clone();
-            // finally we wrap the variable type of the binding to the actual depth of the return type
-            // `make Any(0) a vector` with return type `[Any(0)]`
-            // would mean that whatever type of parameter is passed, we need to wrap with one level
-            // of depth.
-            param_type.wrap_depth(result.get_depth());
-            Some(param_type)
-        } else {
-            Some(result.clone())
-        };
+        let return_type = self.compute_return_type(&params);
+        // let Some(result) = &self.result else {
+        //     return Operation::new(self.id, params, self.effect.clone(), None, Stack::scope_from_members(&self.members))
+        // };
+        // let return_type = if let Some(binding) = result.get_binding() {
+        //     // find a parameter that has this binding
+        //     // take the type from passed params
+        //     let pos = self.signature.sequence.get_types().iter().position(|t| t.get_binding() == Some(binding)).unwrap();
+        //     let type_depth = self.signature.sequence.get_types()[pos].get_depth();
+        //     let mut param_type = params[pos].get_type();
+        //     // we need to unwrap this type to what the binding represents
+        //     // let's imagine that the signature is
+        //     // `top [Any(0)]`
+        //     // then we need to remove one level of depth from the passed parameter type
+        //     // so `top [Color]` would imply the mapping Any(0) -> Color
+        //     param_type = param_type.unwrap_depth(type_depth).clone();
+        //     // finally we wrap the variable type of the binding to the actual depth of the return type
+        //     // `make Any(0) a vector` with return type `[Any(0)]`
+        //     // would mean that whatever type of parameter is passed, we need to wrap with one level
+        //     // of depth.
+        //     param_type.wrap_depth(result.get_depth());
+        //     Some(param_type)
+        // } else {
+        //     Some(result.clone())
+        // };
         Operation::new(self.id, params, self.effect.clone(), return_type, Stack::scope_from_members(&self.members))
     }
 

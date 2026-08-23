@@ -1,30 +1,53 @@
 use image::Rgb;
+use crate::context::Context;
 
 use crate::{translator::{self, ast, error::CompilationError, parser::parser::Parser, word::Word}, variable::{Position, Variable, VariableType, VariableValue}};
 
 pub enum ValueParseError {
     UnknownVariableName(String),
     HeterogenousVector,
+    UnexpectedType(String, VariableType, VariableType),
 }
 
 pub type OperationId = usize;
 pub type StructureId = usize;
 
-
 impl Parser {
+    fn get_variable_value_by_name(&self, var_name: &str) -> Result<&VariableValue, ValueParseError> {
+        match self.context.get_variable(var_name) {
+            Some(value) => Ok(value),
+            None => Err(ValueParseError::UnknownVariableName(var_name.to_string())),
+        }
+    }
+
+    fn parse_position_value(&self, val: &ast::PositionValue) -> Result<i32, ValueParseError> {
+        match val {
+            ast::PositionValue::Concrete(v) => Ok(*v as i32),
+            ast::PositionValue::Variable(name) => {
+                let val = self.get_variable_value_by_name(name)?;
+                let VariableValue::Int(i) = val else {
+                    return Err(ValueParseError::UnexpectedType(name.clone(), val.get_type(), VariableType::Int))
+                };
+                Ok(*i)
+            }
+        }
+    }
+
     pub fn parse_value(&self, val: &ast::Value) -> Result<VariableValue, ValueParseError> {
         match val {
             ast::Value::Number(n) => Ok(VariableValue::Int(*n as i32)),
             ast::Value::Variable(name) => {
-                match self.globals.get_variable(name) {
-                    Some(v) => Ok(v.clone()),
-                    None => Err(ValueParseError::UnknownVariableName(name.clone()))
-                }
+                let val = self.get_variable_value_by_name(name)?;
+                Ok(val.clone())
             }
             ast::Value::Color(c) => Ok(VariableValue::Color(Rgb([c.0,c.1,c.2]))),
             ast::Value::Effect(e) => Ok(VariableValue::Effect(*e)),
             ast::Value::String(s) => Ok(VariableValue::String(s.clone())),
-            ast::Value::Position(p) => Ok(VariableValue::Pos(Position::new(p.0 as i32, p.1 as i32))),
+            ast::Value::Position(p) => {
+                let x = self.parse_position_value(&p.0)?;
+                let y = self.parse_position_value(&p.1)?;
+                Ok(VariableValue::Pos(Position::new(x, y)))
+            }
             ast::Value::Direction(d) => Ok(VariableValue::Direction(*d)),
             ast::Value::Vector(v) => {
                 let mut out = vec![];
@@ -40,27 +63,26 @@ impl Parser {
                 }
                 Ok(VariableValue::Vec(out))
             }
+            ast::Value::Sequence(_) => todo!("process sequence in value"),
         }
     }
 
     pub fn parse_value_as_variable(&self, val: &ast::Value) -> Result<Variable, ValueParseError> {
         match val {
             ast::Value::Variable(name) => {
-                match self.globals.get_variable(name) {
-                    Some(v) => Ok(Variable::Named(name.clone(), v.get_type())),
-                    None => Err(ValueParseError::UnknownVariableName(name.clone()))
-                }
+                let val = self.get_variable_value_by_name(name)?;
+                Ok(Variable::Named(name.clone(), val.get_type()))
             }
             _ => Ok(Variable::Static(self.parse_value(val)?)),
         }
     }
 
     pub fn parse_sequence(&self, seq: &ast::Sequence) -> Result<(translator::Sequence, Vec<Variable>), CompilationError> {
-        let mut words = vec![];
         let mut params = vec![];
+        let mut out = translator::Sequence::new(self.get_location(&seq.into()));
         for w in seq {
             match &w.0 {
-                ast::sequence::Word::Keyword(k) => words.push(Word::Keyword(k.clone())),
+                ast::sequence::Word::Keyword(k) => out.push(Word::Keyword(k.clone())),
                 ast::sequence::Word::Value(v) => {
                     let var = match self.parse_value_as_variable(v) {
                         Ok(v) => v,
@@ -70,15 +92,17 @@ impl Parser {
                                     => return Err(CompilationError::UnknownVariableName(name, self.get_location(&w.1))),
                                 ValueParseError::HeterogenousVector 
                                     => return Err(CompilationError::TemporaryError("heterogenous array".to_string())), // TODO: change
+                                ValueParseError::UnexpectedType(name, got, expected)
+                                    => return Err(CompilationError::UnexpectedType(name, got, expected, self.get_location(&w.1))),
                             }
                         }
                     };
-                    words.push(Word::Type(var.get_type()));
+                    out.push(Word::Type(var.get_type()));
                     params.push(var);
                 }
             }
         }
-        Ok((translator::Sequence::from(words), params))
+        Ok((out, params))
     }
 
     pub fn parse_type(&self, typ: &ast::Type) -> Result<VariableType, CompilationError> {

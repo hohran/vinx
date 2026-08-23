@@ -20,6 +20,16 @@ pub struct Definition {
 
 impl Definition {
     pub fn find_variable_definition(&self, name: &str) -> Range {
+        for (w, r) in &self.signature {
+            let param = match w {
+                super::signature::Word::Variable(name) => name,
+                super::signature::Word::Iterator(it) => &it.0,
+                _ => continue,
+            };
+            if param == name {
+                return r.clone();
+            }
+        }
         for (stmt, _) in &self.body {
             let Statement::VarDefinition(d) = stmt else { continue; };
             if &d.name.0 == name {
@@ -27,6 +37,19 @@ impl Definition {
             }
         }
         panic!("could not find variable definition for `{name}`");
+    }
+
+    pub fn find_nth_method(&self, i: usize) -> &Definition {
+        let Statement::Definition(method) = &self.body
+            .iter()
+            .filter(|s| matches!(s.0, Statement::Definition(_)))
+            .skip(i)
+            .next()
+            .expect(&format!("error: definition `{:?}` does not have {i} methods", self.signature.iter().map(|(w,_)| w).collect::<Vec<_>>()))
+            .0 else {
+                panic!("error: failed to retrieve a method")
+            };
+        method
     }
 }
 

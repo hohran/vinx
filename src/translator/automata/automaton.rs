@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{ event::Operations, translator::{sequence::{Sequence, SequenceType}, type_constraints::TypeConstraints}, variable::VariableType};
+use crate::{ event::Operations, translator::{error::Location, sequence::{Sequence, SequenceType}, type_constraints::TypeConstraints}, variable::VariableType};
 
 use super::{State, StateId, super::{SequenceValue, Word}};
 
@@ -164,7 +164,7 @@ impl Automaton {
     fn get_all_sequences_rec(&self, start: StateId, seq: &Vec<Word>) -> Vec<(Sequence,SequenceValue)> {
         let mut ret = vec![];
         if let Some(r) = self.return_values.get(&start) {
-            ret.push((Sequence::from(seq.clone()),r.clone()));
+            ret.push((Sequence::from(seq.clone(), Location::default()),r.clone()));
         }
         for (t,new_state) in self.states[start].get_all_transitions() {
             let mut new_seq = seq.clone();
@@ -177,7 +177,7 @@ impl Automaton {
 
 #[cfg(test)]
 mod tests {
-    use crate::event::{OperationTemplate, OperationTemplateEnum};
+    use crate::event::{Func, OperationTemplate, OperationTemplateEnum};
     use crate::event::builtins::Builtin;
     use crate::variable::VariableType;
 
@@ -219,7 +219,7 @@ mod tests {
             if !aut.register(seq.clone(), SequenceType::Operation) {
                 panic!("error: union did not create any new states");
             }
-            ops.push(OperationTemplateEnum::Standard(OperationTemplate::from_builtin(i, seq.clone(), *op, ret.clone())));
+            ops.push(OperationTemplateEnum::Standard(OperationTemplate::from_builtin(i, seq.clone(), Func::Builtin(*op), ret.clone())));
         }
         (aut,ops)
     }

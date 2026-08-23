@@ -1,3 +1,4 @@
+#[allow(unused_macros)]
 macro_rules! get {
     ( $node:expr $(=> $child:tt)* ) => {
         {
@@ -8,6 +9,7 @@ macro_rules! get {
     };
 }
 
+#[allow(unused_macros)]
 macro_rules! ast {
     ( $x:expr ) => { Ast::parse_from_contents("tmp.vinx", $x.to_string()) };
 }

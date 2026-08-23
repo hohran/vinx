@@ -1,4 +1,4 @@
-use crate::translator::ast::{Range, Sequence};
+use crate::translator::ast::{Assignment, Range, Sequence};
 
 use super::{Action, VarDefinition, Definition, AstBuilder};
 
@@ -7,6 +7,7 @@ pub enum AstNode {
     VarDefinition(VarDefinition),
     Definition(Definition),
     Sequence(Sequence),
+    Assignment(Assignment),
     // FileLoad(String),
     // Comment(String),
 }
@@ -35,6 +36,7 @@ impl Ast {
                 "comment" | ";" => { continue; }
                 "action" => AstNode::Action(builder.get_action(&node)),
                 "var_definition" => AstNode::VarDefinition(builder.get_var_definition(&node)),
+                "assignment" => AstNode::Assignment(builder.get_var_assignment(&node)),
                 "definition" => AstNode::Definition(builder.get_definition(&node)),
                 "sequence" => AstNode::Sequence(builder.get_sequence(&node)),
                 x => panic!("error: unexpected top-level node: `{x}")

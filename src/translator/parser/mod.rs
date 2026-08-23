@@ -9,3 +9,4 @@ mod options;
 pub use parser::parse;
 pub use operation::OperationMember;
 pub use structure::StructureMember;
+pub use options::Options;

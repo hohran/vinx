@@ -1,7 +1,5 @@
-// TODO: This should be renamed to Event (Event should be renamed to Operation and Operation to
-// OperationTemplate)
-
-use crate::{action::ActionHandle, context::Context, event::Operations, variable::{Stack, VariableValue}};
+use crate::{context, event::Operations, variable::VariableValue};
+use context::Context;
 
 use super::Operation;
 
@@ -12,14 +10,14 @@ pub enum Event {
 }
 
 impl Event {
-    pub fn process(&mut self, context: &mut Context, stack: &mut Stack, action_handles: &mut Vec<ActionHandle>, operations: &Operations) -> Option<VariableValue> {
+    pub fn process<'a, 'b: 'a>(&mut self, context: &'a mut context::Runtime<'b>, operations: &Operations) -> Option<VariableValue> {
         match self {
-            Self::Call(event) => event.process(context, stack, action_handles, operations),
+            Self::Call(event) => event.process(context, operations),
             Self::Assignment(variable, event) => {
-                let Some(return_value) = event.process(context, stack, action_handles, operations) else {
-                    panic!("error: no value returned from event {event:?}");
+                let Some(return_value) = event.process(context, operations) else {
+                    panic!("error: no value returned from event {event:?}"); // this case should be handled in compiletime
                 };
-                stack.update_variable(variable, return_value);
+                context.update_variable(variable, return_value);
                 None
             }
         }

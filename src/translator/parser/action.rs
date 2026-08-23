@@ -1,14 +1,15 @@
-use crate::{action::{Action, Trigger}, event::{Event, Operation}, translator::{SequenceValue, ast::{self, Range}, error::CompilationError, parser::parser::Parser}};
+use crate::{action::{Action, Trigger}, event::{Event, Operation}, translator::{SequenceValue, ast, error::CompilationError, parser::parser::Parser}};
+use crate::context::Context;
 
 impl Parser {
     pub fn parse_action(&mut self, action: &ast::Action) -> Result<(), CompilationError> {
         if !action.trigger.active && action.label.is_none() {
             return Ok(());
         }
-        let trigger = Trigger::from(action.trigger.clone(), &self.globals);
+        let trigger = Trigger::from(action.trigger.clone(), self.context.get_stack());
         let mut events = vec![];
         let mut locals = vec![];
-        self.globals.push();
+        self.context.push_scope();
         for event in &action.events {
             match event {
                 ast::Event::Operation(op, _) => events.push(Event::Call(self.get_operation(op)?)),
@@ -33,7 +34,7 @@ impl Parser {
                     if !return_type.is_assignable_to(definition.get_type()) {
                         panic!("error: type {return_type} is not assignable to {}", definition.get_type()) // TODO: friendlify
                     }
-                    if !self.globals.add_variable(definition.get_name().clone(), return_type.default()) {
+                    if !self.context.add_variable(definition.get_name().clone(), return_type.default()) {
                         let first_defined_range = action.find_variable_definition(definition.get_name());
                         return Err(CompilationError::DuplicateMemberName(definition.get_name().to_string(), self.get_location(&var_def.name.1), self.get_location(&first_defined_range)))
                     }
@@ -42,7 +43,7 @@ impl Parser {
                 }
             }
         }
-        self.globals.pop();
+        self.context.pop_scope();
         let a = Action::new(action.label.clone().unwrap_or("".to_string()), events, trigger, locals);
         self.actions.push(a);
         Ok(())
@@ -50,9 +51,7 @@ impl Parser {
 
     pub fn get_operation(&mut self, event: &ast::Sequence) -> Result<Operation, CompilationError> {
         let (seq, params) = self.parse_sequence(event)?;
-        let Some(sv) = self.automaton.run(seq.get()) else {
-            return Err(CompilationError::UnknownSequence(seq, self.get_location(&Range::from(event))));
-        };
+        let sv = self.get_sequence_value(&seq)?;
         let SequenceValue::Operation(x) = sv else {
             // TODO: handle returning
             panic!("error: unexpected seq value {:?}", sv);

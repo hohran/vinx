@@ -1,10 +1,18 @@
 use tree_sitter::Node;
 
-use super::AstBuilder;
-use crate::variable::{Direction, Effect};
+use super::{AstBuilder, Sequence};
+use crate::{variable::{Direction, Effect}};
 
 type Color = (u8, u8, u8); // TODO: add alpha
-type Position = (i64, i64);
+type PosType = i64;
+
+#[derive(Debug, Clone)]
+pub enum PositionValue {
+    Concrete(PosType),
+    Variable(String),
+}
+
+type Position = (PositionValue, PositionValue);
 
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -16,9 +24,29 @@ pub enum Value {
     Direction(Direction),
     String(String),
     Vector(Vec<Value>),
+    Sequence(Sequence)
 }
 
 impl AstBuilder {
+    pub fn get_simple_value(&self, node: &Node) -> Value {
+        self.expect_node_kind(node, "simple_value");
+        let val = node.child(0).unwrap();
+        match val.kind() {
+            "variable" => Value::Variable(self.get_variable(&val)),
+            "position" => Value::Position(self.get_position(&val)),
+            "color" => Value::Color(self.get_color(&val)),
+            "effect" => Value::Effect(self.get_effect(&val)),
+            "direction" => Value::Direction(self.get_direction(&val)),
+            "number" => Value::Number(self.get_number(&val)),
+            "string" => Value::String(self.get_string(&val)),
+            "vector" => Value::Vector(self.get_vector(&val)),
+            "paren" => self.get_paren_value(&val),
+            x => {
+                panic!("unknown simple value type {x}");
+            }
+        }
+    }
+
     pub fn get_value(&self, node: &Node) -> Value {
         self.expect_node_kind(node, "value");
         let val = node.child(0).unwrap();
@@ -31,10 +59,18 @@ impl AstBuilder {
             "number" => Value::Number(self.get_number(&val)),
             "string" => Value::String(self.get_string(&val)),
             "vector" => Value::Vector(self.get_vector(&val)),
+            "paren" => self.get_paren_value(&val),
+            "sequence" => Value::Sequence(self.get_sequence(&val)),
             x => {
                 panic!("unknown value type {x}");
             }
         }
+    }
+
+    pub fn get_paren_value(&self, node: &Node) -> Value {
+        self.expect_node_kind(node, "paren");
+        let val = node.child_by_field_name("value").unwrap();
+        self.get_value(&val)
     }
 
     pub fn get_variable(&self, node: &Node) -> String {
@@ -42,11 +78,19 @@ impl AstBuilder {
         self.text(node).to_string()
     }
 
-    fn get_position(&self, node: &Node) -> (i64, i64) {
+    fn get_position(&self, node: &Node) -> Position {
         self.expect_node_kind(node, "position");
         let x = node.named_child(0).unwrap();
         let y = node.named_child(1).unwrap();
-        (self.get_number(&x),self.get_number(&y))
+        (self.get_position_value(&x),self.get_position_value(&y))
+    }
+
+    fn get_position_value(&self, node: &Node) -> PositionValue {
+        match node.kind() {
+            "number" => PositionValue::Concrete(self.get_number(node)),
+            "variable" => PositionValue::Variable(self.get_variable(node)),
+            x => panic!("error: unexpected node kind for a value of position: {x}")
+        }
     }
 
     pub fn get_number(&self, node: &Node) -> i64 {

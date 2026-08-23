@@ -1,10 +1,17 @@
 use std::fmt::Debug;
 
-use crate::{action::ActionHandle, context::Context, event::{Event, Operations, builtins::Builtin, operation::OperationTemplate}, variable::{Scope, Stack, Variable, VariableType, VariableValue}};
+use crate::{context, event::{Event, Operations, builtins::{Builtin, BuiltinRuntime}, operation::OperationTemplate}, variable::{Scope, Stack, Variable, VariableType, VariableValue}};
+use context::Context;
+
+#[derive(Debug,Clone)]
+pub enum Func {
+    Builtin(Builtin),
+    RuntimeBuiltin(BuiltinRuntime),
+}
 
 #[derive(Debug,Clone)]
 pub enum EventEffect {
-    Builtin(Builtin),
+    Builtin(Func),
     Composed(Vec<Event>),
 }
 
@@ -35,32 +42,97 @@ impl Operation {
         self.active_struct = false;
     }
 
-    pub fn process(&mut self, context: &mut Context, stack: &mut Stack, action_handles: &mut Vec<ActionHandle>, operations: &Operations) -> Option<VariableValue> {
+    pub fn process_at_compiletime<'a>(&mut self, context: &mut context::Compiletime, operations: &Operations) -> Option<VariableValue> {
         match &self.effect {
-            EventEffect::Builtin(f) => f(context, stack, &mut self.params, action_handles),
-            EventEffect::Composed(_) => self.process_composed(context, stack, operations, action_handles),
+            EventEffect::Builtin(func) => match func {
+                Func::Builtin(f) => f(context, &mut self.params),
+                Func::RuntimeBuiltin(_) => panic!("error: tried to call runtime function at compiletime: `{}`", operations[self.id].get().signature)
+            }
+            EventEffect::Composed(_) => todo!("composed functions at compiletime"),
         }
     }
 
-    fn process_composed(&mut self, context: &mut Context, stack: &mut Stack, operations: &Operations, action_handles: &mut Vec<ActionHandle>) -> Option<VariableValue> {
+    pub fn process<'a, 'b: 'a>(&mut self, context: &'a mut context::Runtime<'b>, operations: &Operations) -> Option<VariableValue> {
+        match &self.effect {
+            EventEffect::Builtin(func) => match func {
+                Func::Builtin(f) => f(context, &mut self.params),
+                Func::RuntimeBuiltin(f) => f(context, &mut self.params),
+            }
+            EventEffect::Composed(_) => self.process_composed(context, operations),
+        }
+    }
+
+    fn process_composed(&mut self, context: &mut context::Runtime, operations: &Operations) -> Option<VariableValue> {
         let op = &operations[self.id].get();
         let iterators = op.get_iterators();
         let operands = op.get_params();
-        self.push_structure_layer(stack, op); // having layers in this order makes sure that method parameters override structure members
-        self.push_operation_layer(stack, op);
-        self.push_iterator_layer(stack, op, iterators);
-        let iterations = self.get_iterations(iterators, stack);
+        self.push_layers(context, op);
+        let iterations = self.get_iterations(iterators, context.get_stack());
         let iterated_params = self.get_iterated_params(iterators);
         let mut result = None;
         for it in 0..iterations {
-            self.push_iterated_values(stack, &iterated_params, op, it);
-            result = self.run_events(stack, context, action_handles, operations);
-            self.fetch_iterated_values(stack, &iterated_params, operands, it);
+            self.push_iterated_values(context.get_stack_mut(), &iterated_params, op, it);
+            result = self.run_events(context, operations);
+            self.fetch_iterated_values(context.get_stack_mut(), &iterated_params, operands, it);
         }
-        stack.pop();
-        self.pop_operation_layer(stack, op);
-        self.pop_structure_layer(stack, op);
+        self.pop_layers(context, op);
         result
+    }
+
+    /// Push all the layers (scopes) necessary for this operation.
+    /// The layers are pushed in this order:
+    ///  * Structure layer
+    ///    - created when the operation is a method to a structure
+    ///    - necessary to access the structure members
+    ///  * Operation layer
+    ///    - this layer contains all operation parameters and members
+    ///  * Iteration layer
+    ///    - this layer shadows all iterated parameters with placeholder values, which are then
+    ///    repopulated in each iteration
+    ///
+    /// The order dictates, that structure variables can be shadowed by the operation variables.
+    fn push_layers(&mut self, context: &mut dyn context::Context, op: &OperationTemplate) {
+        // we need to fetch the operation layer before pushing the structure because
+        // it is possible that some structure variable actually shadows the value of the parameter
+        //
+        // ```vinx
+        // /* global variable */
+        // ...
+        // $color := green
+        // $color $rectangle := {
+        //   ...
+        //   change $self color to $new_color := {
+        //     $color = $new_color;
+        //   }
+        // }
+        // $r := red $rect;
+        // at $x frames { 
+        //   /* 
+        //     in this operation, we need to cache the value of the global $color, because it is
+        //     inaccessible after pushing the structure layer (containing a variable with same name
+        //     and type)
+        //   */
+        //   change color of $r to $color;
+        // }
+        let operation_layer = self.get_operation_layer(context.get_stack(), op);
+        self.push_structure_layer(context.get_stack_mut(), op); // having layers in this order makes sure that method parameters override structure members
+        context.push_scope_with(operation_layer);
+        self.push_iterator_layer(context.get_stack_mut(), op, op.get_iterators());
+    }
+
+    fn pop_layers(&mut self, context: &mut dyn context::Context, op: &OperationTemplate) {
+        context.pop_scope();
+        self.pop_operation_layer(context.get_stack_mut(), op);
+        self.pop_structure_layer(context.get_stack_mut(), op);
+    }
+
+    fn get_operation_layer(&self, stack: &Stack, op: &OperationTemplate) -> Scope {
+        let mut scope = self.vars.clone();
+        for i in 0..op.get_params().len() {
+            let val = self.params[i].get_value(&stack);
+            scope.insert(op.get_params()[i].clone(), val.clone());
+        }
+        scope
     }
 
     /// params: Int, [Pos], [Pos], [Int]
@@ -75,7 +147,7 @@ impl Operation {
     }
 
     /// Get number of iterations, i.e., the length of the main iterator.
-    fn get_iterations(&self, iterators: &Vec<usize>, stack: &mut Stack) -> usize {
+    fn get_iterations(&self, iterators: &Vec<usize>, stack: &Stack) -> usize {
         if iterators.is_empty() {
             1
         } else {
@@ -147,7 +219,6 @@ impl Operation {
     }
 
     fn push_iterator_layer(&self, stack: &mut Stack, op: &OperationTemplate, iterators: &Vec<usize>) {
-        // stack.pretty_println("== iterator layer ==".to_string());
         stack.push();
         for i in iterators {
             let it_name = &op.get_params()[*i];
@@ -155,13 +226,13 @@ impl Operation {
         }
     }
 
-    fn run_events(&mut self, stack: &mut Stack, context: &mut Context, action_handles: &mut Vec<ActionHandle>, operations: &Operations) -> Option<VariableValue> {
+    fn run_events(&mut self, context: &mut context::Runtime, operations: &Operations) -> Option<VariableValue> {
         let mut result = None;
         let EventEffect::Composed(events) = &mut self.effect else {
             panic!("error: expected composed event");
         };
         for e in events {
-            result = e.process(context, stack, action_handles, operations);
+            result = e.process(context, operations);
         }
         result
     }

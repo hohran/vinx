@@ -1,17 +1,21 @@
-use crate::translator::Sequence;
+use crate::{translator::{Sequence, Signature}, variable::VariableType};
 use super::Location;
 
 pub enum CompilationError {
     TemporaryError(String),
-    UnknownSequence(Sequence, Location),
+    UnexpectedType(String, VariableType, VariableType, Location), // 1) variable, 2) got, 
+                                                                  // 3) expected, 4) location
+    UnknownSequence(Sequence),
     RedeclaredVariable(String, Location),
     ForbiddenVariableName(String, Location),
     UnknownVariableName(String, Location),
     FileNotFound(String, Option<Location>),
     MemberUsedBeforeDefinition(String, Location),
     DuplicateMemberName(String, Location, Location),
+    AssignmentOfUndefinedVariable(String, Location),
     RecursiveFileDependency(String, String, Location),
     MultipleMainIterators(Location),
+    UnboundMethod(Signature),
     VagueDefinition(Location, Location, Location), // the definition is neither structure nor operation
                                                    // the params are: 1) signature, 2) first sequence, 3) first method
 }
@@ -34,9 +38,24 @@ impl CompilationError {
             Self::TemporaryError(s) => {
                 print_err!("{s}");
             }
-            Self::UnknownSequence(seq, loc) => {
-                print_err!("unknown sequence `{seq}`");
+            Self::AssignmentOfUndefinedVariable(name, loc) => {
+                print_err!("assignment into an undefined variable `{name}`");
+                eprint!("{}", loc.get_source());
+                print_note!("you probably wished to define it (with the `:=` symbol)");
+            }
+            Self::UnboundMethod(sig) => {
+                print_err!("signature `{sig}` is not bound to the structure");
+                eprint!("{}", sig.get_location().get_source());
+                print_note!("use the builtin reference name `$self` in the method signature"); // TODO: use $self by variable (in case we change it)
+                print_note!("for example: `{sig} for $self`");
+            }
+            Self::UnexpectedType(name, got, expected, loc) => {
+                print_err!("expected `{name}` to have type `{expected}`, got `{got}`");
                 eprintln!("{}", loc.get_source());
+            }
+            Self::UnknownSequence(seq) => {
+                print_err!("unknown sequence `{seq}`");
+                eprintln!("{}", seq.get_location().get_source());
             }
             Self::RedeclaredVariable(s, loc) => {
                 print_err!("redeclared variable name `{s}`");

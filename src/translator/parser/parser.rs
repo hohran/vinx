@@ -1,7 +1,8 @@
-use crate::{action::Action, event::{Operations, TopLevelOperation}, translator::{StructureTemplate, ast::{self, Ast, AstNode, Range}, automata::Automaton, builtins::{load_builtin_operations, load_builtin_structures, load_top_level_operations}, error::{CompilationError, Location, Warning}, file_manager::FileManager, parser::options::Options}, variable::Stack};
+use crate::{action::Action, context::Compiletime, event::{Operations, TopLevelOperation}, translator::{Sequence, SequenceValue, StructureTemplate, ast::{self, Ast, AstNode, Range}, automata::Automaton, builtins::{load_builtin_operations, load_builtin_structures, load_runtime_builtin_operations, load_top_level_operations}, error::{CompilationError, Location, Warning}, file_manager::FileManager}, variable::VariableValue};
+use crate::context::Context;
 
 pub struct Parser {
-    pub globals: Stack,
+    pub context: Compiletime,
     pub actions: Vec<Action>,
     pub automaton: Automaton,
     pub operations: Operations,
@@ -11,7 +12,6 @@ pub struct Parser {
     pub _unresolved_parameter_types: usize,
     pub self_reference_name: &'static str,
     pub warnings: Vec<Warning>,
-    options: Options,
 }
 
 impl Parser {
@@ -19,6 +19,7 @@ impl Parser {
     pub fn new(filepath: &str) -> Result<Self, CompilationError> {
         let mut aut = Automaton::new();
         let mut operations = load_builtin_operations(&mut aut);
+        operations.append(&mut load_runtime_builtin_operations(&mut aut));
         operations.append(&mut load_top_level_operations(&mut aut));
         let builtin_structures = load_builtin_structures(&mut aut);
         let struct_count = builtin_structures.len();
@@ -26,8 +27,8 @@ impl Parser {
             return Err(CompilationError::FileNotFound(filepath.to_string(), None));
         };
         Ok(Self {
+            context: Compiletime::new(),
             file_manager,
-            globals: Stack::new(),
             actions: vec![],
             automaton: aut,
             operations: operations,
@@ -36,8 +37,18 @@ impl Parser {
             _unresolved_parameter_types: 0,
             self_reference_name: "$self",
             warnings: vec![],
-            options: Options::default(),
         })
+    }
+
+    pub fn get_variable_value(&self, name: &(String, Range)) -> Result<&VariableValue, CompilationError> {
+        match self.context.get_variable(&name.0) {
+            Some(val) => Ok(val),
+            None => Err(CompilationError::UnknownVariableName(name.0.clone(), self.get_location(&name.1))),
+        }
+    }
+
+    pub fn warn(&mut self, warning: Warning) {
+        self.warnings.push(warning);
     }
 
     pub fn parse(&mut self) -> Result<(), CompilationError> {
@@ -47,28 +58,37 @@ impl Parser {
                 AstNode::Action(a) => self.parse_action(a)?,
                 AstNode::Definition(d) => self.parse_definition(d)?,
                 AstNode::VarDefinition(d) => self.define_variable(d)?,
+                AstNode::Assignment(a) => self.parse_assignment(a)?,
                 AstNode::Sequence(s) => {
+                    for (w,_) in s {
+                        dbg!(w);
+                    }
                     let (seq, params) = self.parse_sequence(s)?;
-                    let Some(sv) = self.automaton.run(seq.get()) else {
-                        return Err(CompilationError::UnknownSequence(seq, self.get_location(&Range::from(s))));
-                    };
+                    let sv = self.get_sequence_value(&seq)?;
                     if let Some(top_level_op) = sv.get_top_level_operation(&self.operations) {
                         match top_level_op {
                             TopLevelOperation::LoadFile => {
-                                let filepath = params[0].get_value(&self.globals).into_string().to_string();
+                                let filepath = self.context.get_value(&params[0]).into_string().to_string();
                                 self.parse_file_load(&filepath, &Range::from(s))?;
                             }
                             TopLevelOperation::DoNotSave => {
-                                self.options.save_video = false;
+                                self.context.options.save_video = false;
                             }
                         }
                     } else {
-                        sv.instantiate(params, &self.operations, &self.structures, &mut self.globals);
+                        sv.instantiate(params, &self.operations, &self.structures, &mut self.context);
                     }
                 }
             }
         }
         Ok(())
+    }
+
+    pub fn get_sequence_value(&self, seq: &Sequence) -> Result<SequenceValue, CompilationError> {
+        let Some(sv) = self.automaton.run(seq.get()) else {
+            return Err(CompilationError::UnknownSequence(seq.clone()));
+        };
+        Ok(sv)
     }
 
     pub fn new_unresolved_variable(&mut self) -> usize {
@@ -104,13 +124,13 @@ impl Parser {
     }
 
     /// Get the top-level stack, list of actions, and defined operations.
-    pub fn get(self) -> (Stack,Vec<Action>,Operations,Options) {
+    pub fn get(self) -> (Vec<Action>,Operations,Compiletime) {
         assert_eq!(self._unresolved_parameter_types,0);
-        ( self.globals, self.actions, self.operations, self.options )
+        ( self.actions, self.operations, self.context )
     }
 }
 
-pub fn parse(filepath: &str) -> Result<(Stack,Vec<Action>,Operations,Options), CompilationError> {
+pub fn parse(filepath: &str) -> Result<(Vec<Action>,Operations,Compiletime), CompilationError> {
     let mut it = Parser::new(filepath)?;
     it.parse()?;
     for w in it.warnings.iter() {

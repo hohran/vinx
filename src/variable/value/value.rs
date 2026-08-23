@@ -80,12 +80,27 @@ impl VariableValue {
         *i
     }
 
+    pub fn into_int_mut(&mut self) -> &mut i32 {
+        let Self::Int(i) = self else { panic!(); };
+        i
+    }
+
     pub fn into_pos(&self) -> Position {
         let Self::Pos(pos) = self else { panic!(); };
         *pos
     }
 
+    pub fn into_pos_mut(&mut self) -> &mut Position {
+        let Self::Pos(pos) = self else { panic!(); };
+        pos
+    }
+
     pub fn into_vec(&self) -> &Vec<Variable> {
+        let Self::Vec(v) = self else { panic!(); };
+        v
+    }
+
+    pub fn into_vec_mut(&mut self) -> &mut Vec<Variable> {
         let Self::Vec(v) = self else { panic!(); };
         v
     }

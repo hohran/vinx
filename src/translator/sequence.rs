@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use super::{Word, StructureTemplate};
-use crate::{context::Context, event::{OperationTemplateEnum, Operations, TopLevelOperation}, variable::{Stack, Variable, VariableType, VariableValue}};
+use crate::{context, event::{OperationTemplateEnum, Operations, TopLevelOperation}, translator::error::Location, variable::{Variable, VariableType, VariableValue}};
 
 pub type OperationId = usize;
 pub type StructureId = usize;
@@ -52,20 +52,32 @@ impl SequenceValue {
         }
     }
 
-    pub fn into_value(self, params: Vec<Variable>, operations: &Operations, structures: &Vec<StructureTemplate>, stack: &mut Stack) -> VariableValue {
-        self.instantiate(params, operations, structures, stack).expect("error: expected a value")
+    pub fn get_concrete_type(&self, operations: &Operations, params: &Vec<Variable>) -> VariableType {
+        match self {
+            SequenceValue::Operation(f_id) => {
+                let op = operations[*f_id].get();
+                let Some(ret) = op.compute_return_type(params) else {
+                    panic!("no return type for: {}", op.get_signature());
+                };
+                ret
+            }
+            SequenceValue::Structure(s) => VariableType::Structure(*s),
+        }
     }
 
-    pub fn instantiate(self, params: Vec<Variable>, operations: &Operations, structures: &Vec<StructureTemplate>, stack: &mut Stack) -> Option<VariableValue> {
-        let mut context = Context::new();
+    pub fn into_value(self, params: Vec<Variable>, operations: &Operations, structures: &Vec<StructureTemplate>, context: &mut context::Compiletime) -> VariableValue {
+        self.instantiate(params, operations, structures, context).expect("error: expected a value")
+    }
+
+    pub fn instantiate(self, params: Vec<Variable>, operations: &Operations, structures: &Vec<StructureTemplate>, context: &mut context::Compiletime) -> Option<VariableValue> {
         match self {
             SequenceValue::Structure(id) => {
-                Some(VariableValue::Structure(structures[id].instantiate(params, &mut context, operations, structures, stack)))
+                Some(VariableValue::Structure(structures[id].instantiate(params, context, operations, structures)))
             }
             SequenceValue::Operation(id) => {
                 let op = operations[id].get();
                 op.instantiate(params)
-                    .process(&mut context, stack, &mut vec![], operations)
+                    .process_at_compiletime(context, operations)
             }
         }
     }
@@ -85,20 +97,25 @@ impl SequenceValue {
 /// Sequence is intuitively a sequence of words.
 /// It corresponds to whole signatures, such as `move Pos by Pos`.
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
-pub struct Sequence (Vec<Word>);
+pub struct Sequence (Vec<Word>,Location);
 
 impl Sequence {
-    pub fn new() -> Self {
-        Self(vec![])
+    pub fn new(location: Location) -> Self {
+        Self(vec![], location)
     }
 
-    pub fn from(v: Vec<Word>) -> Self {
-        Self(v)
+    pub fn from(v: Vec<Word>, location: Location) -> Self {
+        Self(v, location)
     }
 
     /// Get the underlying vector of words.
     pub fn get(&self) -> &Vec<Word> {
         &self.0
+    }
+
+    /// Get the source code location of this sequence.
+    pub fn get_location(&self) -> &Location {
+        &self.1
     }
 
     pub fn into_vec(self) -> Vec<Word> {
@@ -129,6 +146,30 @@ impl Sequence {
             }
         }
         ret
+    }
+
+    pub fn compute_return_type(&self, ret: &VariableType, params: &Vec<Variable>) -> VariableType {
+        if let Some(binding) = ret.get_binding() {
+            // find a parameter that has this binding
+            // take the type from passed params
+            let pos = self.get_types().iter().position(|t| t.get_binding() == Some(binding)).unwrap();
+            let type_depth = self.get_types()[pos].get_depth();
+            let mut param_type = params[pos].get_type();
+            // we need to unwrap this type to what the binding represents
+            // let's imagine that the signature is
+            // `top [Any(0)]`
+            // then we need to remove one level of depth from the passed parameter type
+            // so `top [Color]` would imply the mapping Any(0) -> Color
+            param_type = param_type.unwrap_depth(type_depth).clone();
+            // finally we wrap the variable type of the binding to the actual depth of the return type
+            // `make Any(0) a vector` with return type `[Any(0)]`
+            // would mean that whatever type of parameter is passed, we need to wrap with one level
+            // of depth.
+            param_type.wrap_depth(ret.get_depth());
+            param_type
+        } else {
+            ret.clone()
+        }
     }
 
     /// Get all occuring types in the sequence (in the same order).
@@ -191,7 +232,7 @@ impl Display for Sequence {
 #[macro_export]
 macro_rules! seq {
     ( $($x:tt)+ ) => {
-        Sequence::from(([$(word!($x)),+]).to_vec())
+        Sequence::from(([$(word!($x)),+]).to_vec(), crate::translator::error::Location::default())
     };
 }
 
