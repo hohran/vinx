@@ -95,7 +95,7 @@ impl AstBuilder {
     pub fn get_time(&self, node: &Node) -> Time {
         match node.kind() {
             "number" => Time::Number(self.get_number(node), Range::from(node)),
-            "variable" => Time::Variable(self.get_variable(node), Range::from(node)),
+            "variable" => Time::Variable(self.get_variable(node).0, Range::from(node)),
             x => panic!("error: unexpected node kind for time {node:?}: {x}"),
         }
     }

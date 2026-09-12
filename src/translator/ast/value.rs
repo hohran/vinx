@@ -1,96 +1,82 @@
 use tree_sitter::Node;
 
 use super::{AstBuilder, Sequence};
-use crate::{variable::{Direction, Effect}};
+use crate::{translator::ast::Range, variable::{Direction, Effect}};
 
 type Color = (u8, u8, u8); // TODO: add alpha
 type PosType = i64;
 
-#[derive(Debug, Clone)]
-pub enum PositionValue {
-    Concrete(PosType),
-    Variable(String),
-}
-
-type Position = (PositionValue, PositionValue);
+type Position = (Box<Expr>,Box<Expr>);
 
 #[derive(Debug, Clone)]
-pub enum Value {
-    Variable(String),
+pub enum Term {
+    Variable((String, Range)),
     Number(i64),
     Position(Position),
     Color(Color),
     Effect(Effect),
     Direction(Direction),
     String(String),
-    Vector(Vec<Value>),
-    Sequence(Sequence)
+    Vector(Vec<Expr>),
+    Expression(Box<Expr>),
+}
+
+#[derive(Debug, Clone)]
+pub enum Expr {
+    Value(Term),
+    Call(Sequence),
 }
 
 impl AstBuilder {
-    pub fn get_simple_value(&self, node: &Node) -> Value {
-        self.expect_node_kind(node, "simple_value");
+    pub fn get_value(&self, node: &Node) -> Term {
+        self.expect_node_kind(node, "value");
         let val = node.child(0).unwrap();
         match val.kind() {
-            "variable" => Value::Variable(self.get_variable(&val)),
-            "position" => Value::Position(self.get_position(&val)),
-            "color" => Value::Color(self.get_color(&val)),
-            "effect" => Value::Effect(self.get_effect(&val)),
-            "direction" => Value::Direction(self.get_direction(&val)),
-            "number" => Value::Number(self.get_number(&val)),
-            "string" => Value::String(self.get_string(&val)),
-            "vector" => Value::Vector(self.get_vector(&val)),
-            "paren" => self.get_paren_value(&val),
+            "variable" => Term::Variable(self.get_variable(&val)),
+            "position" => Term::Position(self.get_position(&val)),
+            "color" => Term::Color(self.get_color(&val)),
+            "effect" => Term::Effect(self.get_effect(&val)),
+            "direction" => Term::Direction(self.get_direction(&val)),
+            "number" => Term::Number(self.get_number(&val)),
+            "string" => Term::String(self.get_string(&val)),
+            "vector" => Term::Vector(self.get_vector(&val)),
+            "paren" => Term::Expression(Box::new(self.get_paren_value(&val))),
             x => {
                 panic!("unknown simple value type {x}");
             }
         }
     }
 
-    pub fn get_value(&self, node: &Node) -> Value {
-        self.expect_node_kind(node, "value");
+    pub fn get_expr(&self, node: &Node) -> Expr {
+        self.expect_node_kind(node, "expr");
         let val = node.child(0).unwrap();
         match val.kind() {
-            "variable" => Value::Variable(self.get_variable(&val)),
-            "position" => Value::Position(self.get_position(&val)),
-            "color" => Value::Color(self.get_color(&val)),
-            "effect" => Value::Effect(self.get_effect(&val)),
-            "direction" => Value::Direction(self.get_direction(&val)),
-            "number" => Value::Number(self.get_number(&val)),
-            "string" => Value::String(self.get_string(&val)),
-            "vector" => Value::Vector(self.get_vector(&val)),
-            "paren" => self.get_paren_value(&val),
-            "sequence" => Value::Sequence(self.get_sequence(&val)),
+            "value" => Expr::Value(self.get_value(&val)),
+            "sequence" => Expr::Call(self.get_sequence(&val)),
             x => {
                 panic!("unknown value type {x}");
             }
         }
     }
 
-    pub fn get_paren_value(&self, node: &Node) -> Value {
-        self.expect_node_kind(node, "paren");
-        let val = node.child_by_field_name("value").unwrap();
-        self.get_value(&val)
+    pub fn get_variable(&self, node: &Node) -> (String, Range) {
+        self.expect_node_kind(node, "variable");
+        let val = self.text(node).to_string();
+        let range = Range::from(node);
+        (val, range)
     }
 
-    pub fn get_variable(&self, node: &Node) -> String {
-        self.expect_node_kind(node, "variable");
-        self.text(node).to_string()
+    fn get_paren_value(&self, node: &Node) -> Expr {
+        self.expect_node_kind(node, "paren");
+        let val = node.child_by_field_name("value").unwrap();
+        self.get_expr(&val)
     }
 
     fn get_position(&self, node: &Node) -> Position {
         self.expect_node_kind(node, "position");
         let x = node.named_child(0).unwrap();
         let y = node.named_child(1).unwrap();
-        (self.get_position_value(&x),self.get_position_value(&y))
-    }
-
-    fn get_position_value(&self, node: &Node) -> PositionValue {
-        match node.kind() {
-            "number" => PositionValue::Concrete(self.get_number(node)),
-            "variable" => PositionValue::Variable(self.get_variable(node)),
-            x => panic!("error: unexpected node kind for a value of position: {x}")
-        }
+        (Box::new(self.get_expr(&x)),Box::new(self.get_expr(&y)))
     }
 
     pub fn get_number(&self, node: &Node) -> i64 {
@@ -171,14 +157,14 @@ impl AstBuilder {
         (r,g,b)
     }
 
-    fn get_vector(&self, node: &Node) -> Vec<Value> {
+    fn get_vector(&self, node: &Node) -> Vec<Expr> {
         let mut v = vec![];
         let ignored_node_kinds = ["comment", "[", "]", ","];
         for val in node.children(&mut node.walk()) {
             if ignored_node_kinds.contains(&val.kind()) {
                 continue;
             }
-            v.push(self.get_value(&val));
+            v.push(self.get_expr(&val));
         }
         v
     }

@@ -2,8 +2,9 @@ use std::collections::HashSet;
 use crate::context::Context;
 
 use crate::translator::error::Warning;
-use crate::translator::structure_template::StructureMember;
 use crate::{translator::{Sequence, SequenceValue, Signature, StructureTemplate, ast, automata::Automaton, error::CompilationError, parser::parser::Parser, sequence::{OperationId, SequenceType}, type_constraints::TypeConstraints, word::Word}, variable::{Variable, VariableType}};
+
+pub type StructureMember = (String, SequenceValue, Vec<Variable>); // name, uninitalized value, parameters (used for initialization of the value)
 
 impl Parser {
     /// Parse structure with signature in `signature_node` and definition in `definition_node`.
@@ -133,7 +134,7 @@ impl Parser {
         if !self.automaton.register(signature.sequence.clone(), SequenceType::Structure) {
             self.warn(Warning::ExistingSignature(signature.clone())); // this warning is maybe not needed
         } else {
-            let structure = StructureTemplate::new(id, signature.params.clone(), signature.sequence.get_types_cloned(), members, signature.clone());
+            let structure = StructureTemplate::new(id, signature.params.clone(), signature.sequence.get_types_cloned(), members);
             self.structures.push(structure);
         }
         Ok(())
@@ -145,8 +146,7 @@ impl Parser {
         let name = definition.get_name().clone();
         let (seq, params) = definition.get_value();
         let sv = self.get_sequence_value(seq)?;
-        let param_types = params.iter().map(|p| p.get_type()).collect();
-        let seq_type = sv.get_return_type(&param_types).unwrap();
+        let seq_type = sv.get_concrete_type(&self.operations, params);
         if !seq_type.is_assignable_to(definition.get_type()) {
             panic!("error: type {seq_type} does not match declared type {}", definition.get_type()); // TODO friendlify
         }

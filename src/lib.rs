@@ -12,7 +12,7 @@ pub mod translator;
 pub mod variable;
 
 pub fn run(media_file: String, command_file: String, output_path: String) {
-    let (mut actions, operations, compilation_context) = match parse(&command_file) {
+    let (mut actions, _operations, _structures, compilation_context) = match parse(&command_file) {
         Ok(x) => x,
         Err(e) => {
             e.print();
@@ -30,7 +30,7 @@ pub fn run(media_file: String, command_file: String, output_path: String) {
         for i in 0..actions.len() {
             let a = &mut actions[i];
             a.step();
-            a.trigger(&mut context, &operations);
+            a.trigger(&mut context);
             let should_stop = process_action_handles(&mut action_handles, &mut actions); // TODO: this has to be
                                                                        // changed if action_handle
                                                                        // could reorder actions

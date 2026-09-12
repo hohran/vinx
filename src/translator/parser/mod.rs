@@ -5,8 +5,9 @@ mod structure;
 mod operation;
 mod action;
 mod options;
+mod expression;
 
 pub use parser::parse;
 pub use operation::OperationMember;
-pub use structure::StructureMember;
 pub use options::Options;
+pub use expression::{Expression, Call};

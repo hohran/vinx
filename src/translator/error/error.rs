@@ -1,4 +1,4 @@
-use crate::{translator::{Sequence, Signature}, variable::VariableType};
+use crate::{translator::{Sequence, Signature, parser::Expression}, variable::VariableType};
 use super::Location;
 
 pub enum CompilationError {
@@ -16,6 +16,7 @@ pub enum CompilationError {
     RecursiveFileDependency(String, String, Location),
     MultipleMainIterators(Location),
     UnboundMethod(Signature),
+    HeterogenousVector(Expression, Expression),
     VagueDefinition(Location, Location, Location), // the definition is neither structure nor operation
                                                    // the params are: 1) signature, 2) first sequence, 3) first method
 }
@@ -37,6 +38,11 @@ impl CompilationError {
         match self {
             Self::TemporaryError(s) => {
                 print_err!("{s}");
+            }
+            Self::HeterogenousVector(e1, e2) => {
+                print_err!("expressions `{e1}` and `{e2}` have distinct types");
+                // TODO: print location
+                print_note!("vectors can only contain elements of the same type");
             }
             Self::AssignmentOfUndefinedVariable(name, loc) => {
                 print_err!("assignment into an undefined variable `{name}`");

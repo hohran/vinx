@@ -1,0 +1,11 @@
+$r := rectangle from (10,10) to (20,20);
+
+process $pos := {
+  move $pos by (2,2);
+  $r := rectangle from $pos to (200,200);
+  draw red $r;
+}
+
+every frame {
+  process (2,2);
+}

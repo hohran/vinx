@@ -18,8 +18,8 @@ impl Parser {
     // Creates a new parser with loaded builtins.
     pub fn new(filepath: &str) -> Result<Self, CompilationError> {
         let mut aut = Automaton::new();
-        let mut operations = load_builtin_operations(&mut aut, 0);
-        operations.append(&mut load_runtime_builtin_operations(&mut aut, operations.len()));
+        let mut operations = load_builtin_operations(&mut aut);
+        operations.append(&mut load_runtime_builtin_operations(&mut aut));
         operations.append(&mut load_top_level_operations(&mut aut));
         let builtin_structures = load_builtin_structures(&mut aut);
         let struct_count = builtin_structures.len();
@@ -94,10 +94,10 @@ impl Parser {
                 AstNode::Assignment(a) => self.parse_assignment(a)?,
                 AstNode::Sequence(s) => {
                     let call = self.parse_call_expression(s)?;
-                    if let Some(top_level_op) = call.value.get_top_level_operation() {
+                    if let Some(top_level_op) = call.sequence.get_top_level_operation(&self.operations) {
                         match top_level_op {
                             TopLevelOperation::LoadFile => {
-                                let filepath_value = call.params[0].evaluate_at_compiletime(&mut self.context).unwrap();
+                                let filepath_value = call.params[0].evaluate_at_compiletime(&self.operations, &self.structures, &mut self.context).unwrap();
                                 let filepath = self.context.get_value(&filepath_value).into_string().to_string();
                                 self.parse_file_load(&filepath, &Range::from(s))?;
                             }
@@ -106,7 +106,7 @@ impl Parser {
                             }
                         }
                     } else {
-                        call.value.evaluate_at_compiletime(&call.params, &mut self.context);
+                        call.sequence.evaluate_at_compiletime(call.params, &self.operations, &self.structures, &mut self.context);
                     }
                 }
             }

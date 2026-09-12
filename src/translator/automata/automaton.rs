@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{ event::Operations, translator::{error::Location, sequence::{Sequence, SequenceType}, type_constraints::TypeConstraints}, variable::VariableType};
+use crate::{ event::Operations, translator::{error::Location, sequence::Sequence, type_constraints::TypeConstraints}, variable::VariableType};
 
 use super::{State, StateId, super::{SequenceValue, Word}};
 
@@ -11,13 +11,13 @@ use super::{State, StateId, super::{SequenceValue, Word}};
 pub struct Automaton {
     states: Vec<State>,
     return_values: HashMap<StateId, SequenceValue>,
-    loaded: HashMap<SequenceType, usize>,
+    loaded_operations: usize,
+    loaded_structures: usize,
 }
 
 impl Automaton {
     pub fn new() -> Self {
-        let loaded = HashMap::from([(SequenceType::Operation, 0), (SequenceType::Structure, 0)]);
-        Self { states: vec![State::new()], return_values: HashMap::new(), loaded }
+        Self { states: vec![State::new()], return_values: HashMap::new(), loaded_operations: 0, loaded_structures: 0 }
     }
 
     /// Creates a new state without any transitions and returns its id.
@@ -30,7 +30,7 @@ impl Automaton {
     /// Registers a return value for given sequence.
     /// This function will return `false`, if such sequence is already registered.
     /// _Theoretically speaking, this operation is equivalent to an automata union._
-    pub fn register(&mut self, seq: Sequence, seq_type: SequenceType) -> bool {
+    pub fn register(&mut self, seq: Sequence, seq_value: SequenceValue) -> bool {
         let mut cur_state = 0;
         for transition in seq.into_vec() {
             let next_state = self.states[cur_state].use_transition(&transition);
@@ -46,9 +46,12 @@ impl Automaton {
         if self.return_values.contains_key(&cur_state) {
             return false;
         }
-        let seq_id = self.loaded.get_mut(&seq_type).expect("error: sequence type without set count");
-        self.return_values.insert(cur_state, seq_type.to_value(*seq_id));
-        *seq_id += 1;
+        if seq_value.is_operation() {
+            self.loaded_operations += 1;
+        } else {
+            self.loaded_structures += 1;
+        }
+        self.return_values.insert(cur_state, seq_value);
         true
     }
 
@@ -115,7 +118,7 @@ impl Automaton {
         if seq.is_empty() {
             let Some(sv) = self.return_values.get(&cur) else { return vec![] };
             if let Some(var_type) = ret_var {
-                let return_type = sv.into_type(operations).with_inverted_binding();
+                let return_type = sv.get_general_return_type().with_inverted_binding();
                 // TODO: check if we shouldnt switch the intersection
                 let Some(prod) = var_type.intersect(&return_type) else {
                     return vec![];
@@ -184,7 +187,7 @@ mod tests {
     use super::{Automaton};
     use super::Word;
     use super::SequenceValue;
-    use crate::translator::sequence::{Sequence, SequenceType};
+    use crate::translator::sequence::Sequence;
     use crate::{seq,word,vtype};
     use crate::event::builtins::*;
 

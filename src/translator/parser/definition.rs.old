@@ -63,7 +63,7 @@ impl Parser {
                     VariableType::Any(binding)
                 } else {
                     let sv = self.get_sequence_value(&seq)?;
-                    sv.get_general_return_type()
+                    sv.into_type(&self.operations)
                 };
                 Ok(VarDefinition::new(name, (t, Range::default()), (seq,*vr), params, false))
             }

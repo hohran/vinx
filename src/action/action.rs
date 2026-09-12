@@ -1,5 +1,6 @@
 use super::Trigger;
 use crate::context::Context;
+use crate::translator::StructureTemplate;
 use crate::{context::Runtime, event::{Event, Operations}, translator::parser::OperationMember, variable::Scope};
 
 /// Action is a set of events that triggers at specific timestamps.
@@ -50,14 +51,25 @@ impl Action {
         self.trigger.step();
     }
 
-    /// Try to trigger this action
-    pub fn trigger(&mut self, context: &mut Runtime<'_>, operations: &Operations) {
+    // /// Try to trigger this action
+    // pub fn trigger(&mut self, context: &mut Runtime<'_>, operations: &Operations) {
+    //     context.push_scope_with(self.create_member_scope()); {
+    //         while self.trigger.activate(context.get_stack()) {
+    //             for event in &mut self.events {
+    //                 event.process(context, operations);
+    //             }
+    //         }
+    //     } context.pop_scope();
+    // }
+
+    pub fn trigger(&mut self, context: &mut Runtime<'_>) {
         context.push_scope_with(self.create_member_scope()); {
             while self.trigger.activate(context.get_stack()) {
                 for event in &mut self.events {
-                    event.process(context, operations);
+                    event.process(context);
                 }
             }
         } context.pop_scope();
     }
+
 }

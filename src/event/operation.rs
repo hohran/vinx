@@ -1,10 +1,10 @@
 use std::fmt::{Debug, Display};
 
-use crate::{event::{Event, event::{EventEffect, Func, Operation}}, translator::{Sequence, Signature, parser::OperationMember}, variable::{Scope, Stack, Variable, VariableType}};
+use crate::{event::{Event, event::{EventEffect, Func, Operation}}, translator::{Sequence, Signature, parser::{Expression, OperationMember}}, variable::{Scope, Stack, Variable, VariableType}};
 
 pub type Operations = Vec<OperationTemplateEnum>;
 
-#[derive(Debug,Clone)]
+#[derive(Clone,PartialEq,Debug)]
 pub struct OperationTemplate {
     id: usize,
     pub signature: Signature,
@@ -13,12 +13,13 @@ pub struct OperationTemplate {
     result: Option<VariableType>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug,PartialEq, Clone, Copy)]
 pub enum TopLevelOperation {
     LoadFile,
     DoNotSave,
 }
 
+#[derive(Clone,PartialEq,Debug)]
 pub enum OperationTemplateEnum {
     Standard(OperationTemplate),
     TopLevel(TopLevelOperation),
@@ -35,18 +36,39 @@ impl OperationTemplateEnum {
 
 impl OperationTemplate {
     pub fn new(id: usize, signature: Signature, events: Vec<Event>, members: Vec<OperationMember>, result: Option<VariableType>) -> Self {
+        Self::check_return_type(signature.sequence.get_types(), &result);
         Self { id, effect: EventEffect::Composed(events), members, signature, result }
     }
 
+    pub fn get_id(&self) -> usize {
+        self.id
+    }
+
     pub fn from_builtin(id: usize, sequence: Sequence, builtin: Func, result: Option<VariableType>) -> Self {
+        Self::check_return_type(sequence.get_types(), &result);
         Self { id, signature: Signature::from(sequence), effect: EventEffect::Builtin(builtin), members: vec![], result }
+    }
+
+    /// if the return type is ambiguous, we need to check, that its binding is present in the
+    /// parameters.
+    ///
+    /// `process [Any(0)] -> Any(1)` is a problematic signature, because it returns ambiguous value
+    /// even for a concrete input.
+    fn check_return_type(params: Vec<&VariableType>, return_type: &Option<VariableType>) {
+        if let Some(Some(return_type_binding)) = return_type.as_ref().map(|t| t.get_binding()) {
+            assert!(params.iter().any(|t| t.get_binding() == Some(return_type_binding)));
+        }
+    }
+
+    pub fn get_signature(&self) -> &Signature {
+        &self.signature
     }
 
     pub fn get_return_type(&self) -> Option<&VariableType> {
         self.result.as_ref()
     }
 
-    pub fn get_signature(&self) -> &Sequence {
+    pub fn get_signature_sequence(&self) -> &Sequence {
         &self.signature.sequence
     }
 
@@ -68,33 +90,13 @@ impl OperationTemplate {
         self.result.as_ref().map(|r| self.signature.sequence.compute_return_type(r, &params))
     }
 
-    pub fn instantiate(&self, params: Vec<Variable>) -> Operation {
-        let return_type = self.compute_return_type(&params);
-        // let Some(result) = &self.result else {
-        //     return Operation::new(self.id, params, self.effect.clone(), None, Stack::scope_from_members(&self.members))
-        // };
-        // let return_type = if let Some(binding) = result.get_binding() {
-        //     // find a parameter that has this binding
-        //     // take the type from passed params
-        //     let pos = self.signature.sequence.get_types().iter().position(|t| t.get_binding() == Some(binding)).unwrap();
-        //     let type_depth = self.signature.sequence.get_types()[pos].get_depth();
-        //     let mut param_type = params[pos].get_type();
-        //     // we need to unwrap this type to what the binding represents
-        //     // let's imagine that the signature is
-        //     // `top [Any(0)]`
-        //     // then we need to remove one level of depth from the passed parameter type
-        //     // so `top [Color]` would imply the mapping Any(0) -> Color
-        //     param_type = param_type.unwrap_depth(type_depth).clone();
-        //     // finally we wrap the variable type of the binding to the actual depth of the return type
-        //     // `make Any(0) a vector` with return type `[Any(0)]`
-        //     // would mean that whatever type of parameter is passed, we need to wrap with one level
-        //     // of depth.
-        //     param_type.wrap_depth(result.get_depth());
-        //     Some(param_type)
-        // } else {
-        //     Some(result.clone())
-        // };
-        Operation::new(self.id, params, self.effect.clone(), return_type, Stack::scope_from_members(&self.members))
+    pub fn ___compute_return_type(&self, params: &Vec<VariableType>) -> Option<VariableType> {
+        self.result.as_ref().map(|r| self.signature.sequence.___compute_return_type(r, &params))
+    }
+
+    pub fn instantiate(&self, params: Vec<Expression>) -> Operation {
+        let return_type = self.___compute_return_type(&params.iter().map(|expr| expr.get_type()).collect());
+        Operation::new(params, self.effect.clone(), return_type, Stack::scope_from_members(&self.members), self.clone())
     }
 
     pub fn push_to_stack(&self, params: &Vec<Variable>, variables: &Scope, stack: &mut Stack) {

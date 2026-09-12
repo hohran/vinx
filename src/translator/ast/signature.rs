@@ -25,7 +25,7 @@ impl AstBuilder {
             match word.kind() {
                 "comment" => {}
                 "keyword" => sign.push((Word::Keyword(self.get_keyword(&word)), Range::from(&word))),
-                "variable" => sign.push((Word::Variable(self.get_variable(&word)), Range::from(&word))),
+                "variable" => sign.push((Word::Variable(self.get_variable(&word).0), Range::from(&word))),
                 "iterator" => sign.push((Word::Iterator(self.get_iterator(&word)), Range::from(&word))),
                 "ERROR" => { // TODO: what to do with errors?
                     if self.text(&word) == "=" {
@@ -41,7 +41,7 @@ impl AstBuilder {
 
     pub fn get_iterator(&self, node: &Node) -> Iterator {
         self.expect_node_kind(node, "iterator");
-        let var = self.get_variable(&node.child_by_field_name("variable").unwrap());
+        let var = self.get_variable(&node.child_by_field_name("variable").unwrap()).0;
         let is_main = node.child_by_field_name("main").is_some();
         (var, is_main)
     }

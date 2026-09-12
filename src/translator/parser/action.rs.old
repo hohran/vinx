@@ -21,17 +21,24 @@ impl Parser {
                 ast::Event::VarDefinition(var_def, _) => {
                     let definition = self.get_var_definition(var_def, None)?;
                     let (seq, params) = definition.get_value();
-                    let sv = self.get_sequence_value(seq)?;
-                    let seq_type = sv.get_return_type(&params.iter().map(|p| p.get_type()).collect()).unwrap();
-                    if !seq_type.is_assignable_to(definition.get_type()) {
-                        panic!("error: type {seq_type} is not assignable to {}", definition.get_type()) // TODO: friendlify
+                    let Some(sv) = self.automaton.run(seq.get()) else {
+                        panic!() // TODO: friendlify
+                    };
+                    let SequenceValue::Operation(op_id) = sv else {
+                        panic!() // TODO: FIXME
+                    };
+                    let op = self.operations[op_id].get().instantiate(params.clone());
+                    let Some(return_type) = op.get_return_type() else {
+                        panic!() // TODO: friendlify
+                    };
+                    if !return_type.is_assignable_to(definition.get_type()) {
+                        panic!("error: type {return_type} is not assignable to {}", definition.get_type()) // TODO: friendlify
                     }
-                    if !self.context.add_variable(definition.get_name().clone(), seq_type.default()) {
+                    if !self.context.add_variable(definition.get_name().clone(), return_type.default()) {
                         let first_defined_range = action.find_variable_definition(definition.get_name());
                         return Err(CompilationError::DuplicateMemberName(definition.get_name().to_string(), self.get_location(&var_def.name.1), self.get_location(&first_defined_range)))
                     }
-                    locals.push((definition.get_name().clone(), seq_type.clone()));
-                    // TODO: what to do with call?
+                    locals.push((definition.get_name().clone(), return_type.clone()));
                     events.push(Event::Assignment(definition.get_name().clone(), op));
                 }
             }

@@ -11,7 +11,7 @@ use crate::{translator::error::{CompilationError, Location}, variable::VariableT
 ///  - params: [$p,$x]
 ///  - iterators: [0] ($p)
 ///  - structure_param_id: None (only set for methods)
-#[derive(Debug,Clone)]
+#[derive(Clone,PartialEq,Debug)]
 pub struct Signature {
     pub sequence: Sequence,
     pub params: Vec<String>,

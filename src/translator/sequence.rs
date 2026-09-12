@@ -1,96 +1,107 @@
 use std::fmt::Display;
 
 use super::{Word, StructureTemplate};
-use crate::{context, event::{OperationTemplateEnum, Operations, TopLevelOperation}, translator::error::Location, variable::{Variable, VariableType, VariableValue}};
+use crate::{context, event::{OperationTemplateEnum, Operations, TopLevelOperation}, translator::{Signature, error::Location, parser::Expression}, variable::{Variable, VariableType, VariableValue}};
 
 pub type OperationId = usize;
 pub type StructureId = usize;
 
-#[derive(Clone,Eq,PartialEq,Debug,Copy,Hash)]
-pub enum SequenceType {
-    Operation,
-    Structure,
-}
-
-impl SequenceType {
-    pub fn to_value(self, id: usize) -> SequenceValue {
-        match self {
-            Self::Operation => SequenceValue::Operation(id),
-            Self::Structure => SequenceValue::Structure(id),
-        }
-    }
-}
+// #[derive(Clone,Eq,PartialEq,Debug,Copy,Hash)]
+// pub enum SequenceType {
+//     Operation,
+//     Structure,
+// }
+//
+// impl SequenceType {
+//     pub fn to_value(self, id: usize) -> SequenceValue {
+//         match self {
+//             Self::Operation => SequenceValue::Operation(id),
+//             Self::Structure => SequenceValue::Structure(id),
+//         }
+//     }
+// }
 
 // TODO: refactor
-#[derive(Clone,Eq,PartialEq,Debug)]
+#[derive(Clone,PartialEq,Debug)]
 pub enum SequenceValue {
-    Operation(OperationId),
-    Structure(StructureId),
-    // Value(VariableType),
+    Operation(OperationTemplateEnum),
+    Structure(StructureTemplate),
 }
 
 impl SequenceValue {
     /// Return a variable type of given sequence value.
-    /// This type can be ambiguous!
+    /// This type can be ambiguous! For this reason, this function is named the way it is.
     ///
     /// For example for operation:
     /// `top $vec`, where $vec: [Any(0)], the return type would be `Any(0)`
     ///
     /// To have a concrete return type, you need to instantiate the operation with parameters first,
     /// to be able to infer it.
-    /// Structure should always return the concrete types.
-    pub fn into_type(&self, operations: &Operations) -> VariableType {
+    /// Structure should always return the concrete type.
+    pub fn get_general_return_type(&self) -> VariableType {
         match self {
-            SequenceValue::Operation(f_id) => {
-                let op = operations[*f_id].get();
-                let Some(ret) = op.get_return_type() else {
-                    panic!("no return type for: {}", op.get_signature());
+            SequenceValue::Operation(op) => {
+                let Some(ret) = op.get().get_return_type() else {
+                    panic!("no return type for: {}", op.get().get_signature_sequence());
                 };
                 ret.clone()
             }
-            SequenceValue::Structure(s) => VariableType::Structure(*s),
+            SequenceValue::Structure(s) => VariableType::Structure(s.get_id()),
         }
     }
 
-    pub fn get_concrete_type(&self, operations: &Operations, params: &Vec<Variable>) -> VariableType {
+    pub fn get_return_type(&self, params: &Vec<VariableType>) -> Option<VariableType> {
         match self {
-            SequenceValue::Operation(f_id) => {
-                let op = operations[*f_id].get();
-                let Some(ret) = op.compute_return_type(params) else {
-                    panic!("no return type for: {}", op.get_signature());
-                };
-                ret
+            SequenceValue::Operation(op) => {
+                op.get().___compute_return_type(params)
             }
-            SequenceValue::Structure(s) => VariableType::Structure(*s),
+            SequenceValue::Structure(s) => Some(VariableType::Structure(s.get_id())),
         }
     }
 
-    pub fn into_value(self, params: Vec<Variable>, operations: &Operations, structures: &Vec<StructureTemplate>, context: &mut context::Compiletime) -> VariableValue {
-        self.instantiate(params, operations, structures, context).expect("error: expected a value")
-    }
-
-    pub fn instantiate(self, params: Vec<Variable>, operations: &Operations, structures: &Vec<StructureTemplate>, context: &mut context::Compiletime) -> Option<VariableValue> {
+    pub fn get_signature(&self) -> &Signature {
         match self {
-            SequenceValue::Structure(id) => {
-                Some(VariableValue::Structure(structures[id].instantiate(params, context, operations, structures)))
+            SequenceValue::Structure(s) => s.get_signature(),
+            Self::Operation(op) => &op.get().get_signature(),
+        }
+    }
+
+    pub fn evaluate_at_compiletime(&self, params: &Vec<Expression>, context: &mut context::Compiletime) -> Option<VariableValue> {
+        match self {
+            SequenceValue::Structure(s) => {
+                Some(VariableValue::Structure(s.evaluate_at_compiletime(params, context)))
             }
-            SequenceValue::Operation(id) => {
-                let op = operations[id].get();
-                op.instantiate(params)
-                    .process_at_compiletime(context, operations)
+            SequenceValue::Operation(op) => {
+                op.get()
+                    .instantiate(params.clone())
+                    .process_at_compiletime(context)
             }
         }
     }
 
-    pub fn get_top_level_operation(&self, operations: &Operations) -> Option<TopLevelOperation> {
-        let SequenceValue::Operation(id) = self else {
-            return None;
-        };
-        if let OperationTemplateEnum::TopLevel(op) = &operations[*id] {
+    pub fn evaluate_at_runtime(&self, params: &Vec<Expression>, context: &mut context::Runtime) -> Option<VariableValue> {
+        match self {
+            SequenceValue::Structure(s) => {
+                Some(VariableValue::Structure(s.evaluate_at_runtime(params, context)))
+            }
+            SequenceValue::Operation(op) => {
+                op.get()
+                    .instantiate(params.clone())
+                    .process(context)
+            }
+        }
+    }
+
+    pub fn get_top_level_operation(&self) -> Option<TopLevelOperation> {
+        if let SequenceValue::Operation(OperationTemplateEnum::TopLevel(op)) = self {
             Some(*op)
         } else {
             None
         }
+    }
+
+    pub fn is_operation(&self) -> bool {
+        matches!(self, Self::Operation(_))
     }
 }
 
@@ -155,6 +166,30 @@ impl Sequence {
             let pos = self.get_types().iter().position(|t| t.get_binding() == Some(binding)).unwrap();
             let type_depth = self.get_types()[pos].get_depth();
             let mut param_type = params[pos].get_type();
+            // we need to unwrap this type to what the binding represents
+            // let's imagine that the signature is
+            // `top [Any(0)]`
+            // then we need to remove one level of depth from the passed parameter type
+            // so `top [Color]` would imply the mapping Any(0) -> Color
+            param_type = param_type.unwrap_depth(type_depth).clone();
+            // finally we wrap the variable type of the binding to the actual depth of the return type
+            // `make Any(0) a vector` with return type `[Any(0)]`
+            // would mean that whatever type of parameter is passed, we need to wrap with one level
+            // of depth.
+            param_type.wrap_depth(ret.get_depth());
+            param_type
+        } else {
+            ret.clone()
+        }
+    }
+
+    pub fn ___compute_return_type(&self, ret: &VariableType, params: &Vec<VariableType>) -> VariableType {
+        if let Some(binding) = ret.get_binding() {
+            // find a parameter that has this binding
+            // take the type from passed params
+            let pos = self.get_types().iter().position(|t| t.get_binding() == Some(binding)).unwrap();
+            let type_depth = self.get_types()[pos].get_depth();
+            let mut param_type = params[pos].clone();
             // we need to unwrap this type to what the binding represents
             // let's imagine that the signature is
             // `top [Any(0)]`

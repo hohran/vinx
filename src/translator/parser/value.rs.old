@@ -3,7 +3,6 @@ use crate::context::Context;
 
 use crate::{translator::{self, ast, error::CompilationError, parser::parser::Parser, word::Word}, variable::{Position, Variable, VariableType, VariableValue}};
 
-/// Error kind for parsing values.
 pub enum ValueParseError {
     UnknownVariableName(String),
     HeterogenousVector,
@@ -34,46 +33,47 @@ impl Parser {
         }
     }
 
-    pub fn parse_term(&self, val: &ast::Term) -> Result<VariableValue, ValueParseError> {
+    pub fn parse_value(&self, val: &ast::Value) -> Result<VariableValue, ValueParseError> {
         match val {
-            ast::Term::Number(n) => Ok(VariableValue::Int(*n as i32)),
-            ast::Term::Variable(name) => {
+            ast::Value::Number(n) => Ok(VariableValue::Int(*n as i32)),
+            ast::Value::Variable(name) => {
                 let val = self.get_variable_value_by_name(name)?;
                 Ok(val.clone())
             }
-            ast::Term::Color(c) => Ok(VariableValue::Color(Rgb([c.0,c.1,c.2]))),
-            ast::Term::Effect(e) => Ok(VariableValue::Effect(*e)),
-            ast::Term::String(s) => Ok(VariableValue::String(s.clone())),
-            ast::Term::Position(p) => {
+            ast::Value::Color(c) => Ok(VariableValue::Color(Rgb([c.0,c.1,c.2]))),
+            ast::Value::Effect(e) => Ok(VariableValue::Effect(*e)),
+            ast::Value::String(s) => Ok(VariableValue::String(s.clone())),
+            ast::Value::Position(p) => {
                 let x = self.parse_position_value(&p.0)?;
                 let y = self.parse_position_value(&p.1)?;
                 Ok(VariableValue::Pos(Position::new(x, y)))
             }
-            ast::Term::Direction(d) => Ok(VariableValue::Direction(*d)),
-            ast::Term::Vector(v) => {
+            ast::Value::Direction(d) => Ok(VariableValue::Direction(*d)),
+            ast::Value::Vector(v) => {
                 let mut out = vec![];
                 let mut vec_type = VariableType::Any(0);
                 for elem in v {
                     let elem_val = self.parse_value_as_variable(elem)?;
-                    let Some(new_vec_type) = vec_type.intersect(&elem_val.get_type()) else {
+                    if let Some(new_vec_type) = vec_type.intersect(&elem_val.get_type()) {
+                        vec_type = new_vec_type;
+                    } else {
                         return Err(ValueParseError::HeterogenousVector);
-                    };
-                    vec_type = new_vec_type;
+                    }
                     out.push(elem_val);
                 }
                 Ok(VariableValue::Vec(out))
             }
-            ast::Term::Expression(expr) => 
+            ast::Value::Sequence(_) => todo!("process sequence in value"),
         }
     }
 
-    pub fn parse_value_as_variable(&self, val: &ast::Term) -> Result<Variable, ValueParseError> {
+    pub fn parse_value_as_variable(&self, val: &ast::Value) -> Result<Variable, ValueParseError> {
         match val {
-            ast::Term::Variable(name) => {
+            ast::Value::Variable(name) => {
                 let val = self.get_variable_value_by_name(name)?;
                 Ok(Variable::Named(name.clone(), val.get_type()))
             }
-            _ => Ok(Variable::Static(self.parse_term(val)?)),
+            _ => Ok(Variable::Static(self.parse_value(val)?)),
         }
     }
 

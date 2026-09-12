@@ -1,6 +1,6 @@
 // TODO TODO TODO: assignments and variable definitions in actions/operations disallow to have a
 // sequence which returns a structure now! FIXME FIXME FIXME
-use crate::{event::{Event, Operation, OperationTemplate, OperationTemplateEnum}, translator::{SequenceValue, Signature, ast::{self, Range}, automata::Automaton, error::{CompilationError, Warning}, parser::{Call, parser::Parser}, sequence::StructureId, type_constraints::TypeConstraints}, variable::VariableType};
+use crate::{event::{Event, Operation, OperationTemplate, OperationTemplateEnum}, translator::{SequenceValue, Signature, ast::{self, Range}, automata::Automaton, error::{CompilationError, Warning}, parser::parser::Parser, sequence::{SequenceType, StructureId}, type_constraints::TypeConstraints}, variable::VariableType};
 use crate::context::Context;
 
 pub type OperationMember = (String, VariableType); // name, type
@@ -52,18 +52,18 @@ impl Parser {
                 ast::definition::Statement::Assignment(ass) => {
                     check(&defined, &ass.name.0, &ass.name.1)?;
                     for (word, range) in &ass.value.0 {
-                        let ast::sequence::Word::Value(ast::Term::Variable(name)) = word else {
+                        let ast::sequence::Word::Value(ast::Value::Variable(name)) = word else {
                             continue;
                         };
-                        check(&defined, &name.0, range)?;
+                        check(&defined, name, range)?;
                     }
                 }
                 ast::definition::Statement::Event(event) => {
                     for (word, range) in event {
-                        let ast::sequence::Word::Value(ast::Term::Variable(name)) = word else {
+                        let ast::sequence::Word::Value(ast::Value::Variable(name)) = word else {
                             continue;
                         };
-                        check(&defined, &name.0, range)?;
+                        check(&defined, name, range)?;
                     }
                 }
                 _ => {}
@@ -211,19 +211,18 @@ impl Parser {
     /// Add given operation to the global list and register its signature in the Translator's automaton.
     pub fn add_operation(&mut self, signature: Signature, events: Vec<Event>, members: Vec<OperationMember>) -> bool {
         let op_id = self.operations.len();
+        // println!("adding operation '{signature}' => {op_id} ({})", signature.sequence);
+        if !self.automaton.register(signature.sequence.clone(), SequenceType::Operation) {
+            return false // TODO: generate warning
+        }
         let mut result = None;
         if !events.is_empty() {
             let last_event = &events[events.len()-1];
             if let Event::Call(event) = last_event {
-                result = event.get_return_type();
+                result = event.get_return_type().cloned();
             }
         }
-        let op = OperationTemplateEnum::Standard(OperationTemplate::new(op_id, signature.clone(), events, members, result));
-        // println!("adding operation '{signature}' => {op_id} ({})", signature.sequence);
-        if !self.automaton.register(signature.sequence, SequenceValue::Operation(op.clone())) {
-            return false // TODO: generate warning
-        }
-        self.operations.push(op);
+        self.operations.push(OperationTemplateEnum::Standard(OperationTemplate::new(op_id, signature, events, members, result)));
         true
     }
 
@@ -237,7 +236,6 @@ impl Parser {
             match &stmt.0 {
                 ast::definition::Statement::Assignment(d) => {
                     let event = self.get_operation_event(&d.value.0, structure)?;
-                    // let op = Call { value: event, params: d
                     events.push(Event::Assignment(d.name.0.clone(), event));
                 }
                 ast::definition::Statement::VarDefinition(d) => {

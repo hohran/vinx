@@ -1,5 +1,5 @@
 use crate::event::{Func, OperationTemplate, OperationTemplateEnum, TopLevelOperation, builtins::*};
-use crate::translator::sequence::SequenceType;
+use crate::translator::{SequenceValue, Signature};
 use crate::{seq, word, vtype};
 use crate::variable::VariableType;
 
@@ -37,16 +37,17 @@ pub fn load_top_level_operations(aut: &mut Automaton) -> Vec<OperationTemplateEn
     ];
     let mut ops = vec![];
     for (seq,f) in builtins {
-        if !aut.register(seq.clone(), SequenceType::Operation) {
+        let op = OperationTemplateEnum::TopLevel(*f);
+        if !aut.register(seq.clone(), SequenceValue::Operation(op.clone())) {
             panic!("error: union did not create any new states");
         }
-        ops.push(OperationTemplateEnum::TopLevel(*f));
+        ops.push(op);
     }
     ops
 }
 
 /// Generate all builtin operations, note them in the automaton `aut` and return them.
-pub fn load_runtime_builtin_operations(aut: &mut Automaton) -> Vec<OperationTemplateEnum> {
+pub fn load_runtime_builtin_operations(aut: &mut Automaton, id_prefix: usize) -> Vec<OperationTemplateEnum> {
     let builtins: &[(Sequence, Option<VariableType>, BuiltinRuntime)] = &builtins!(
         ("draw" Color "rectangle" "outline" "from" Pos "to" Pos), draw_rect_outline;
         ("activate" String), activate;
@@ -64,16 +65,18 @@ pub fn load_runtime_builtin_operations(aut: &mut Automaton) -> Vec<OperationTemp
     );
     let mut ops = vec![];
     for (i,(seq,ret,op)) in builtins.into_iter().enumerate() {
-        if !aut.register(seq.clone(), SequenceType::Operation) {
+        let op = OperationTemplateEnum::Standard(OperationTemplate::from_builtin(id_prefix + i, seq.clone(), Func::RuntimeBuiltin(*op), ret.clone()));
+        if !aut.register(seq.clone(), SequenceValue::Operation(op.clone())) {
             panic!("error: union did not create any new states");
         }
-        ops.push(OperationTemplateEnum::Standard(OperationTemplate::from_builtin(i, seq.clone(), Func::RuntimeBuiltin(*op), ret.clone())));
+        // FIXME: id
+        ops.push(op);
     }
     ops
 }
 
 /// Generate all builtin operations, note them in the automaton `aut` and return them.
-pub fn load_builtin_operations(aut: &mut Automaton) -> Vec<OperationTemplateEnum> {
+pub fn load_builtin_operations(aut: &mut Automaton, id_prefix: usize) -> Vec<OperationTemplateEnum> {
     let builtins: &[(Sequence, Option<VariableType>, Builtin)] = &builtins!(
         ((Any(0))) => VariableType::Any(0), get_value;
         ("set" (Any(0)) "to" (Any(0))), set;
@@ -103,10 +106,11 @@ pub fn load_builtin_operations(aut: &mut Automaton) -> Vec<OperationTemplateEnum
     );
     let mut ops = vec![];
     for (i,(seq,ret,op)) in builtins.into_iter().enumerate() {
-        if !aut.register(seq.clone(), SequenceType::Operation) {
+        let op = OperationTemplateEnum::Standard(OperationTemplate::from_builtin(id_prefix + i, seq.clone(), Func::Builtin(*op), ret.clone()));
+        if !aut.register(seq.clone(), SequenceValue::Operation(op.clone())) {
             panic!("error: union did not create any new states");
         }
-        ops.push(OperationTemplateEnum::Standard(OperationTemplate::from_builtin(i, seq.clone(), Func::Builtin(*op), ret.clone())));
+        ops.push(op);
     }
     ops
 }
@@ -120,12 +124,13 @@ pub fn load_builtin_structures(aut: &mut Automaton) -> Vec<StructureTemplate> {
     let mut structures = vec![];
     for (i,seq) in builtins.into_iter().enumerate() {
         let types = seq.get_types();
-        if !aut.register(seq.clone(), SequenceType::Structure) {
-            panic!("error: union did not create any new states");
-        }
         let param_names: Vec<String> = types.iter().enumerate().map(|(i,_)| i.to_string()).collect();
         let param_types = types.into_iter().map(|v| v.clone()).collect();
-        structures.push(StructureTemplate::new(i, param_names, param_types, vec![]));
+        let s = StructureTemplate::new(i, param_names, param_types, vec![], Signature::from(seq.clone()));
+        if !aut.register(seq.clone(), SequenceValue::Structure(s.clone())) {
+            panic!("error: union did not create any new states");
+        }
+        structures.push(s);
     }
     structures
 }

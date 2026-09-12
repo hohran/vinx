@@ -17,7 +17,7 @@ pub use action::{Action, Trigger, Time, Unit, Event};
 pub use definition::Definition;
 pub use var_definition::{VarDefinition,Assignment};
 pub use sequence::Sequence;
-pub use value::{Value, PositionValue};
+pub use value::{Term, Expr};
 pub use range::Range;
 pub use typ::Type;
 
