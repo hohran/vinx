@@ -13,7 +13,7 @@ mod macros;
 
 pub use ast::{Ast, AstNode};
 pub use signature::{Signature, Iterator};
-pub use action::{Action, Trigger, Time, Unit, Event};
+pub use action::{Action, Trigger, Unit, Event};
 pub use definition::Definition;
 pub use var_definition::{VarDefinition,Assignment};
 pub use sequence::Sequence;
@@ -22,3 +22,4 @@ pub use range::Range;
 pub use typ::Type;
 
 use builder::AstBuilder;
+use tree_sitter::Node;

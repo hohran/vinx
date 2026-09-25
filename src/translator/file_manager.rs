@@ -30,6 +30,10 @@ pub struct FileManager {
 }
 
 impl FileManager {
+    pub fn placeholder() -> Self {
+        Self { filenames: vec![], load_states: vec![], contents: vec![] }
+    }
+
     pub fn new(filename: &str) -> Option<Self> {
         let mut path = PathBuf::new();
         path.push(filename);

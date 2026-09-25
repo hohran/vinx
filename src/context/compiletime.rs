@@ -1,17 +1,26 @@
-use crate::{translator::parser::Options, variable::{Scope, Stack, Variable, VariableValue}};
+use crate::{translator::parser::{CompilationAction, Options}, variable::{Scope, Stack, Variable, VariableValue}};
 
 pub struct Compiletime {
     stack: Stack,
     pub options: Options,
+    actions: Vec<CompilationAction>,
 }
 
 impl Compiletime {
     pub fn new() -> Self {
-        Self { stack: Stack::new(), options: Options::default() }
+        Self { stack: Stack::new(), options: Options::default(), actions: vec![] }
     }
 
     pub fn into_stack(self) -> Stack {
         self.stack
+    }
+
+    pub fn get_actions(&mut self) -> Vec<CompilationAction> {
+        self.actions.drain(0..).collect()
+    }
+
+    pub fn add_action(&mut self, action: CompilationAction) {
+        self.actions.push(action);
     }
 }
 

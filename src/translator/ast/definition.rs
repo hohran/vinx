@@ -1,52 +1,58 @@
 use tree_sitter::Node;
 
-use crate::translator::ast::Range;
+use crate::translator::ast::{Event, Range};
 
-use super::{Sequence, Signature, AstBuilder, VarDefinition, Assignment};
+use super::{Signature, AstBuilder};
 
 #[derive(Debug)]
 pub enum Statement {
-    Event(Sequence),
-    VarDefinition(VarDefinition),
-    Assignment(Assignment),
+    Event(Event),
     Definition(Definition),
+}
+
+impl From<&Statement> for Range {
+    fn from(value: &Statement) -> Self {
+        todo!()
+    }
 }
 
 #[derive(Debug)]
 pub struct Definition {
     pub signature: Signature,
-    pub body: Vec<(Statement,Range)>,
+    pub body: Vec<Statement>,
+    // TODO: keep range between curly braces
 }
 
 impl Definition {
     pub fn find_variable_definition(&self, name: &str) -> Range {
-        for (w, r) in &self.signature {
-            let param = match w {
-                super::signature::Word::Variable(name) => name,
-                super::signature::Word::Iterator(it) => &it.0,
-                _ => continue,
-            };
-            if param == name {
-                return r.clone();
-            }
-        }
-        for (stmt, _) in &self.body {
-            let Statement::VarDefinition(d) = stmt else { continue; };
-            if &d.name.0 == name {
-                return d.name.1.clone();
-            }
-        }
-        panic!("could not find variable definition for `{name}`");
+        todo!();
+        // for (w, r) in &self.signature {
+        //     let param = match w {
+        //         super::signature::Word::Variable(name) => name,
+        //         super::signature::Word::Iterator(it) => &it.0,
+        //         _ => continue,
+        //     };
+        //     if param == name {
+        //         return r.clone();
+        //     }
+        // }
+        // for (stmt, _) in &self.body {
+        //     let Statement::VarDefinition(d) = stmt else { continue; };
+        //     if &d.name.0 == name {
+        //         return d.name.1.clone();
+        //     }
+        // }
+        // panic!("could not find variable definition for `{name}`");
     }
 
     pub fn find_nth_method(&self, i: usize) -> &Definition {
         let Statement::Definition(method) = &self.body
             .iter()
-            .filter(|s| matches!(s.0, Statement::Definition(_)))
+            .filter(|s| matches!(s, Statement::Definition(_)))
             .skip(i)
             .next()
             .expect(&format!("error: definition `{:?}` does not have {i} methods", self.signature.iter().map(|(w,_)| w).collect::<Vec<_>>()))
-            .0 else {
+            else {
                 panic!("error: failed to retrieve a method")
             };
         method
@@ -61,16 +67,14 @@ impl AstBuilder {
         Definition { signature, body }
     }
 
-    fn get_body(&self, node: &Node) -> Vec<(Statement, Range)> {
+    fn get_body(&self, node: &Node) -> Vec<Statement> {
         self.expect_node_kind(node, "definition_body");
         let mut stmts = vec![];
         for s in node.children(&mut node.walk()) {
             match s.kind() {
                 "comment" | "{" | "}" | ";" => {}
-                "sequence" => stmts.push((Statement::Event(self.get_sequence(&s)), Range::from(&s))),
-                "definition" => stmts.push((Statement::Definition(self.get_definition(&s)), Range::from(&s))),
-                "var_definition" => stmts.push((Statement::VarDefinition(self.get_var_definition(&s)), Range::from(&s))),
-                "assignment" => stmts.push((Statement::Assignment(self.get_var_assignment(&s)), Range::from(&s))),
+                "definition" => stmts.push(Statement::Definition(self.get_definition(&s))),
+                "event" => stmts.push(Statement::Event(self.get_event(&s))),
                 x => panic!("error: unexpected node kind for definition body: `{x}")
             }
         }

@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use super::{Word, StructureTemplate};
-use crate::{context, event::{OperationTemplateEnum, Operations, TopLevelOperation}, translator::{Signature, error::Location, parser::Expression}, variable::{Variable, VariableType, VariableValue}};
+use crate::{context, event::OperationTemplate, translator::{Signature, error::Location, parser::Expression}, variable::{Variable, VariableType, VariableValue}};
 
 pub type OperationId = usize;
 pub type StructureId = usize;
@@ -24,7 +24,7 @@ pub type StructureId = usize;
 // TODO: refactor
 #[derive(Clone,PartialEq,Debug)]
 pub enum SequenceValue {
-    Operation(OperationTemplateEnum),
+    Operation(OperationTemplate),
     Structure(StructureTemplate),
 }
 
@@ -41,8 +41,8 @@ impl SequenceValue {
     pub fn get_general_return_type(&self) -> VariableType {
         match self {
             SequenceValue::Operation(op) => {
-                let Some(ret) = op.get().get_return_type() else {
-                    panic!("no return type for: {}", op.get().get_signature_sequence());
+                let Some(ret) = op.get_return_type() else {
+                    panic!("no return type for: {}", op.get_signature_sequence());
                 };
                 ret.clone()
             }
@@ -53,7 +53,7 @@ impl SequenceValue {
     pub fn get_return_type(&self, params: &Vec<VariableType>) -> Option<VariableType> {
         match self {
             SequenceValue::Operation(op) => {
-                op.get().___compute_return_type(params)
+                op.___compute_return_type(params)
             }
             SequenceValue::Structure(s) => Some(VariableType::Structure(s.get_id())),
         }
@@ -62,7 +62,7 @@ impl SequenceValue {
     pub fn get_signature(&self) -> &Signature {
         match self {
             SequenceValue::Structure(s) => s.get_signature(),
-            Self::Operation(op) => &op.get().get_signature(),
+            Self::Operation(op) => &op.get_signature(),
         }
     }
 
@@ -72,8 +72,7 @@ impl SequenceValue {
                 Some(VariableValue::Structure(s.evaluate_at_compiletime(params, context)))
             }
             SequenceValue::Operation(op) => {
-                op.get()
-                    .instantiate(params.clone())
+                op.instantiate(params.clone())
                     .process_at_compiletime(context)
             }
         }
@@ -85,18 +84,9 @@ impl SequenceValue {
                 Some(VariableValue::Structure(s.evaluate_at_runtime(params, context)))
             }
             SequenceValue::Operation(op) => {
-                op.get()
-                    .instantiate(params.clone())
+                op.instantiate(params.clone())
                     .process(context)
             }
-        }
-    }
-
-    pub fn get_top_level_operation(&self) -> Option<TopLevelOperation> {
-        if let SequenceValue::Operation(OperationTemplateEnum::TopLevel(op)) = self {
-            Some(*op)
-        } else {
-            None
         }
     }
 

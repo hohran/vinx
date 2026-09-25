@@ -162,6 +162,13 @@ impl TypeConstraints {
             false
         }
     }
+
+    /// Checks that this does not create any constraints.
+    pub fn is_empty(&self) -> bool {
+        !self.types.iter()
+            .enumerate()
+            .any(|(id, t)| t.strictly_matches(&VariableType::Any(id)))
+    }
 }
 
 impl Display for TypeConstraints {

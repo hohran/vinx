@@ -1,10 +1,8 @@
 use tree_sitter::Node;
 
-use crate::translator::ast::VarDefinition;
+use crate::translator::ast::{Expr, VarDefinition};
 use crate::translator::ast::{Assignment, AstBuilder};
 use super::Range;
-
-use super::Sequence;
 
 #[derive(Debug, Clone)]
 pub enum Time {
@@ -28,7 +26,7 @@ pub struct Trigger {
     pub range: Range,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Action {
     pub label: Option<String>,
     pub trigger: Trigger,
@@ -36,19 +34,19 @@ pub struct Action {
     pub range: Range,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Event {
-    Operation(Sequence, Range),
-    Assignment(Assignment, Range),
-    VarDefinition(VarDefinition, Range),
+    Operation(Expr),
+    Assignment(Assignment),
+    VarDefinition(VarDefinition),
 }
 
 impl Action {
     pub fn find_variable_definition(&self, name: &str) -> Range {
         for e in &self.events {
-            let Event::VarDefinition(d, r) = e else { continue; };
+            let Event::VarDefinition(d) = e else { continue; };
             if &d.name.0 == name {
-                return r.clone();
+                return d.name.1.clone();
             }
         }
         panic!("could not find variable definition for `{name}`");
@@ -116,10 +114,31 @@ impl AstBuilder {
         self.expect_node_kind(node, "event");
         let child = node.child(0).unwrap();
         match child.kind() {
-            "sequence" => Event::Operation(self.get_sequence(&child), Range::from(node)),
-            "assignment" => Event::Assignment(self.get_var_assignment(&child), Range::from(node)),
-            "var_definition" => Event::VarDefinition(self.get_var_definition(&child), Range::from(node)),
+            "expr" => Event::Operation(self.get_expr(&child)),
+            "assignment" => Event::Assignment(self.get_var_assignment(&child)),
+            "var_definition" => Event::VarDefinition(self.get_var_definition(&child)),
             x => panic!("error: unexpected node kind for event: `{x}")
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::translator::ast::AstNode;
+
+    use super::*;
+    use super::super::macros::*;
+    use super::super::Ast;
+
+    fn get_action(source_code: &str) -> Action {
+        let AstNode::Action(a) = &ast!(source_code).nodes[0] else { panic!() };
+        a.clone()
+    }
+
+    #[test]
+    fn test_ast_action() {
+        let a1 = get_action("every frame do something");
+        assert!(a1.label.is_none());
+        assert!(a1.trigger());
     }
 }

@@ -1,4 +1,4 @@
-use crate::{action::Action, context::Compiletime, event::{Operations, TopLevelOperation}, translator::{Sequence, SequenceValue, StructureTemplate, ast::{self, Ast, AstNode, Range}, automata::Automaton, builtins::{load_builtin_operations, load_builtin_structures, load_runtime_builtin_operations, load_top_level_operations}, error::{CompilationError, Location, Warning}, file_manager::FileManager}, variable::VariableValue};
+use crate::{action::Action, context::Compiletime, event::Operations, translator::{Sequence, SequenceValue, StructureTemplate, ast::{self, Ast, AstNode, Range}, automata::Automaton, builtins::{load_builtin_operations, load_builtin_structures}, error::{CompilationError, Location, Warning}, file_manager::FileManager, parser::CompilationAction}, variable::VariableValue};
 use crate::context::Context;
 
 pub struct Parser {
@@ -7,7 +7,6 @@ pub struct Parser {
     pub automaton: Automaton,
     pub operations: Operations,
     pub structures: Vec<StructureTemplate>,
-    pub _number_of_builtin_structures: usize,
     pub file_manager: FileManager,
     pub _unresolved_parameter_types: usize,
     pub self_reference_name: &'static str,
@@ -15,29 +14,42 @@ pub struct Parser {
 }
 
 impl Parser {
+    pub fn placeholder() -> Self {
+        let automaton = Automaton::new();
+        let file_manager = FileManager::placeholder();
+        Self::__new(automaton, file_manager, vec![], vec![])
+    }
+
+    pub fn __new(automaton: Automaton, file_manager: FileManager, operations: Operations, structures: Vec<StructureTemplate>) -> Self {
+        Self { 
+            automaton, operations, file_manager, structures, 
+            context: Compiletime::new(),
+            actions: vec![], 
+            _unresolved_parameter_types: 0, 
+            self_reference_name: "$self", 
+            warnings: vec![] }
+    }
+
     // Creates a new parser with loaded builtins.
     pub fn new(filepath: &str) -> Result<Self, CompilationError> {
         let mut aut = Automaton::new();
-        let mut operations = load_builtin_operations(&mut aut, 0);
-        operations.append(&mut load_runtime_builtin_operations(&mut aut, operations.len()));
-        operations.append(&mut load_top_level_operations(&mut aut));
-        let builtin_structures = load_builtin_structures(&mut aut);
-        let struct_count = builtin_structures.len();
+        let operations = load_builtin_operations(&mut aut);
+        let structures = load_builtin_structures(&mut aut);
         let Some(file_manager) = FileManager::new(filepath) else {
             return Err(CompilationError::FileNotFound(filepath.to_string(), None));
         };
-        Ok(Self {
-            context: Compiletime::new(),
-            file_manager,
-            actions: vec![],
-            automaton: aut,
-            operations: operations,
-            structures: builtin_structures,
-            _number_of_builtin_structures: struct_count,
-            _unresolved_parameter_types: 0,
-            self_reference_name: "$self",
-            warnings: vec![],
-        })
+        Ok(Self::__new(aut, file_manager, operations, structures))
+        // Ok(Self {
+        //     context: Compiletime::new(),
+        //     file_manager,
+        //     actions: vec![],
+        //     automaton: aut,
+        //     operations: operations,
+        //     structures: builtin_structures,
+        //     _unresolved_parameter_types: 0,
+        //     self_reference_name: "$self",
+        //     warnings: vec![],
+        // })
     }
 
     pub fn get_variable_value(&self, name: &(String, Range)) -> Result<&VariableValue, CompilationError> {
@@ -87,28 +99,24 @@ impl Parser {
     pub fn parse(&mut self) -> Result<(), CompilationError> {
         let ast = Ast::parse(self.file_manager.current_file());
         for node in &ast.nodes {
-            match &node.0 {
+            match &node {
                 AstNode::Action(a) => self.parse_action(a)?,
                 AstNode::Definition(d) => self.parse_definition(d)?,
-                AstNode::VarDefinition(d) => self.define_variable(d)?,
-                AstNode::Assignment(a) => self.parse_assignment(a)?,
-                AstNode::Sequence(s) => {
-                    let call = self.parse_call_expression(s)?;
-                    if let Some(top_level_op) = call.value.get_top_level_operation() {
-                        match top_level_op {
-                            TopLevelOperation::LoadFile => {
-                                let filepath_value = call.params[0].evaluate_at_compiletime(&mut self.context).unwrap();
-                                let filepath = self.context.get_value(&filepath_value).into_string().to_string();
-                                self.parse_file_load(&filepath, &Range::from(s))?;
-                            }
-                            TopLevelOperation::DoNotSave => {
-                                self.context.options.save_video = false;
-                            }
-                        }
-                    } else {
-                        call.value.evaluate_at_compiletime(&call.params, &mut self.context);
-                    }
-                }
+                AstNode::Event(e) => todo!("process event"),
+                // AstNode::VarDefinition(d) => self.define_variable(d)?,
+                // AstNode::Assignment(a) => self.parse_assignment(a)?,
+                // AstNode::Sequence(s) => {
+                //     let call = self.parse_call_expression(s)?;
+                //     call.value.evaluate_at_compiletime(&call.params, &mut self.context);
+                //     // compiletime events can issue `actions` which need to be taken in the main
+                //     // compilation process, since they do not hold enough context.
+                //     for a in self.context.get_actions() {
+                //         match a {
+                //             CompilationAction::LoadFile(filepath) => 
+                //                 self.parse_file_load(&filepath, &Range::from(s))?
+                //         }
+                //     }
+                // }
             }
         }
         Ok(())
@@ -123,7 +131,7 @@ impl Parser {
 
     pub fn new_unresolved_variable(&mut self) -> usize {
         self._unresolved_parameter_types += 1;
-        self._unresolved_parameter_types - 1
+        return self._unresolved_parameter_types - 1
     }
 
     pub fn resolve_variables(&mut self, count: usize) {

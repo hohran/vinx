@@ -1,4 +1,5 @@
-use crate::variable::{Stack, Variable, VariableType};
+use crate::translator::parser::Expression;
+use crate::variable::{Stack, VariableType};
 use crate::translator::ast;
 
 // TODO: add milliseconds
@@ -13,38 +14,39 @@ pub enum TimeUnit {
 #[derive(Debug)]
 pub struct Trigger {
     counter: usize,
-    trigger_time: Variable,
+    trigger_time: Expression,
     unit: TimeUnit,
     onetime: bool,
     enabled: bool,
 }
 
 impl Trigger {
-    pub fn new(trigger_time: Variable, unit: TimeUnit, onetime: bool) -> Self {
-        assert!(trigger_time.get_type() == VariableType::Int);
+    pub fn new(trigger_time: Expression, unit: TimeUnit, onetime: bool) -> Self {
+        assert!(trigger_time.get_type_unchecked() == VariableType::Int);
         Self { trigger_time, counter: 0, unit, onetime, enabled: true }
     }
 
     // Create Trigger from its ast representation
     pub fn from(trigger: ast::Trigger, stack: &Stack) -> Self {
-        let time = match trigger.time {
-            ast::Time::Variable(name, _) => {
-                let Some (var) = stack.get_variable(&name) else {
-                    panic!("error: no such variable {name}") // TODO: friendlify
-                };
-                Variable::Named(name, var.get_type())
-            }
-            ast::Time::Number(n, _) => {
-                Variable::Static(crate::variable::VariableValue::Int(n as i32)) // TODO: make i64
-            }
-        };
-        let unit = match trigger.unit {
-            ast::Unit::Frame(_) => TimeUnit::Frame,
-            ast::Unit::Second(_) => panic!("error: time unit `second` not implemented"), // TODO: friendlify
-            ast::Unit::Millisecond(_) => panic!("error: time unit `millisecond` not implemented"),
-            // x => panic!("error: unexpected time unit `{x:?}`"),
-        };
-        Self { counter: 0, trigger_time: time, unit, onetime: trigger.onetime, enabled: trigger.active }
+        todo!();
+        // let time = match trigger.time {
+        //     ast::Time::Variable(name, _) => {
+        //         let Some (var) = stack.get_variable(&name) else {
+        //             panic!("error: no such variable {name}") // TODO: friendlify
+        //         };
+        //         Variable::Named(name, var.get_type())
+        //     }
+        //     ast::Time::Number(n, _) => {
+        //         Variable::Static(crate::variable::VariableValue::Int(n as i32)) // TODO: make i64
+        //     }
+        // };
+        // let unit = match trigger.unit {
+        //     ast::Unit::Frame(_) => TimeUnit::Frame,
+        //     ast::Unit::Second(_) => panic!("error: time unit `second` not implemented"), // TODO: friendlify
+        //     ast::Unit::Millisecond(_) => panic!("error: time unit `millisecond` not implemented"),
+        //     // x => panic!("error: unexpected time unit `{x:?}`"),
+        // };
+        // Self { counter: 0, trigger_time: time, unit, onetime: trigger.onetime, enabled: trigger.active }
     }
 
     pub fn clear(&mut self) {
@@ -65,14 +67,15 @@ impl Trigger {
 
     /// If counted up to the trigger time, return `true` and modify the counter.
     pub fn activate(&mut self, stack: &Stack) -> bool {
-        if !self.enabled { return false; }
-        let t = self.trigger_time.get_value(stack).into_int() as usize;
-        if self.counter < t { return false; }
-        if self.onetime { self.enabled = false; } // disable onetime triggers
-        match &self.unit {
-            TimeUnit::Frame => self.counter = 0,
-        }
-        true
+        todo!();
+        // if !self.enabled { return false; }
+        // let t = self.trigger_time.get_value(stack).into_int() as usize;
+        // if self.counter < t { return false; }
+        // if self.onetime { self.enabled = false; } // disable onetime triggers
+        // match &self.unit {
+        //     TimeUnit::Frame => self.counter = 0,
+        // }
+        // true
     }
 
     /// Increase counted time on `step`.
@@ -89,6 +92,8 @@ impl Trigger {
 
 #[cfg(test)]
 mod tests {
+    use crate::variable::Variable;
+
     use super::*;
 
     fn step_n_times(acc: &mut Trigger, n: usize) {
@@ -105,7 +110,7 @@ mod tests {
 
     #[test]
     fn test_activate() {
-        let mut t = Trigger::new(Variable::new("t", VariableType::Int), TimeUnit::Frame, false);
+        let mut t = Trigger::new(Expression::Variable(Variable::new("t", VariableType::Int)), TimeUnit::Frame, false);
         let mut s = get_stack();
         assert!(!t.activate(&s));
         step_n_times(&mut t, 4);
@@ -122,7 +127,7 @@ mod tests {
         s.update_variable("t", crate::variable::VariableValue::Int(4));
         assert!(t.activate(&s));
         // onetime
-        let mut t = Trigger::new(Variable::new("t", VariableType::Int), TimeUnit::Frame, true);
+        let mut t = Trigger::new(Expression::Variable(Variable::new("t", VariableType::Int)), TimeUnit::Frame, true);
         step_n_times(&mut t, 15);
         assert!(t.activate(&s));
         step_n_times(&mut t, 15);
@@ -131,7 +136,7 @@ mod tests {
 
     #[test]
     fn test_clear() {
-        let mut t = Trigger::new(Variable::new("t", VariableType::Int), TimeUnit::Frame, false);
+        let mut t = Trigger::new(Expression::Variable(Variable::new("t", VariableType::Int)), TimeUnit::Frame, false);
         step_n_times(&mut t, 10);
         t.clear();
         assert!(!t.activate(&get_stack()));
@@ -139,7 +144,7 @@ mod tests {
 
     #[test]
     fn test_enable_disable() {
-        let mut t = Trigger::new(Variable::new("t", VariableType::Int), TimeUnit::Frame, false);
+        let mut t = Trigger::new(Expression::Variable(Variable::new("t", VariableType::Int)), TimeUnit::Frame, false);
         let s = get_stack();
         t.disable();              // <- Disabled
         step_n_times(&mut t, 10); // Steps will not be registered

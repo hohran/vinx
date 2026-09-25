@@ -111,3 +111,28 @@ impl CompilationError {
         }
     }
 }
+
+// impl Error for CompilationError {
+//     fn source(&self) -> Option<&(dyn Error + 'static)> {
+//         todo!()
+//     }
+//
+//     fn description(&self) -> &str {
+//         "description() is deprecated; use Display"
+//     }
+//
+//     fn cause(&self) -> Option<&dyn Error> {
+//         todo!()
+//     }
+//
+//     fn provide<'a>(&'a self, request: &mut std::error::Request<'a>) {
+//         todo!()
+//     }
+// }
+//
+// impl Display for CompilationError {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         self.print();
+//         Ok(())
+//     }
+// }

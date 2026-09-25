@@ -3,6 +3,6 @@ pub mod builtins;
 mod event;
 mod event_action;
 
-pub use operation::{OperationTemplate, Operations, TopLevelOperation, OperationTemplateEnum};
+pub use operation::{OperationTemplate, Operations};
 pub use event::{Operation, EventEffect, Func};
 pub use event_action::{Event};

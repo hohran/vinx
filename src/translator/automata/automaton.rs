@@ -158,12 +158,10 @@ impl Automaton {
     }
 
     /// Returns all sequences in the given automaton.
-    #[allow(dead_code)]
     pub fn get_all_sequences(&self) -> Vec<(Sequence,SequenceValue)> {
         self.get_all_sequences_rec(0, &vec![])
     }
 
-    #[allow(dead_code)]
     fn get_all_sequences_rec(&self, start: StateId, seq: &Vec<Word>) -> Vec<(Sequence,SequenceValue)> {
         let mut ret = vec![];
         if let Some(r) = self.return_values.get(&start) {
@@ -176,20 +174,26 @@ impl Automaton {
         }
         ret
     }
+
+    /// Returns the number of all registered sequences.
+    pub fn get_count(&self) -> usize {
+        self.return_values.len()
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::event::{Func, OperationTemplate, OperationTemplateEnum};
-    use crate::event::builtins::Builtin;
-    use crate::variable::VariableType;
+    use crate::event::{Func, OperationTemplate};
+    use crate::variable::{Variable, VariableType, VariableValue};
+    use std::collections::HashMap;
 
-    use super::{Automaton};
+    use super::Automaton;
     use super::Word;
     use super::SequenceValue;
     use crate::translator::sequence::Sequence;
-    use crate::{seq,word,vtype};
+    use crate::{context, seq, vtype, word};
     use crate::event::builtins::*;
+    use general::Builtin;
 
     macro_rules! builtin {
         (($($w:tt)+), $f:expr, $r:expr) => {
@@ -215,20 +219,38 @@ mod tests {
         };
     }
 
-    fn load_operations(builtins: &[(Sequence, Option<VariableType>, Builtin)]) -> (Automaton, Vec<OperationTemplateEnum>) {
+    macro_rules! expect {
+        (
+            $(
+                ($($w:tt)+) => $r:expr
+            );* $(;)?
+        ) => {{
+            let mut map: HashMap<Sequence, Option<usize>> = HashMap::new();
+            $( map.insert(seq!($($w)+), $r); )*
+            map
+        }}
+    }
+
+    // helper builtin function
+    fn nop(_context: &mut dyn context::Context, _params: &mut Vec<Variable>) -> Option<VariableValue> {
+        None
+    }
+
+    fn load_operations(builtins: &[(Sequence, Option<VariableType>, Builtin)]) -> (Automaton, Vec<OperationTemplate>) {
         let mut aut = Automaton::new();
         let mut ops = vec![];
         for (i,(seq,ret,op)) in builtins.into_iter().enumerate() {
-            if !aut.register(seq.clone(), SequenceType::Operation) {
+            let operation = OperationTemplate::from_builtin(i, seq.clone(), Func::Builtin(*op), ret.clone());
+            if !aut.register(seq.clone(), SequenceValue::Operation(operation.clone())) {
                 panic!("error: union did not create any new states");
             }
-            ops.push(OperationTemplateEnum::Standard(OperationTemplate::from_builtin(i, seq.clone(), Func::Builtin(*op), ret.clone())));
+            ops.push(operation);
         }
         (aut,ops)
     }
 
     impl Automaton {
-        pub fn from(la: (Sequence,SequenceType)) -> Self {
+        pub fn from(la: (Sequence, SequenceValue)) -> Self {
             let mut s = Self::new();
             s.register(la.0, la.1);
             s
@@ -238,129 +260,139 @@ mod tests {
         }
     }
 
+    fn verify(a: Automaton, expectations: HashMap<Sequence, Option<usize>>) {
+        for (seq, val) in expectations {
+            let actual_id = match a.run(seq.get()) {
+                Some(SequenceValue::Operation(op)) => op.get_id(),
+                Some(SequenceValue::Structure(s)) => s.get_id(),
+                None => {
+                    assert!(val.is_none(), "expected {}, but got none - sequence `{seq}`", val.unwrap());
+                    continue;
+                }
+            };
+            let Some(expected_id) = val else {
+                panic!("got id `{actual_id}` but expected none - sequence `{seq}`");
+            };
+            assert_eq!(actual_id, expected_id, "expected id {expected_id}, but got {actual_id}");
+        }
+    }
+
     #[test]
     fn test_automaton_run() {
-        let la = (seq!("a" [Int] "b"), SequenceType::Operation);
-        let a = Automaton::from(la);
-        assert_eq!(a.len(), 4);
-        assert_eq!(a.run(seq!("a" [Int] "b").get()), Some(SequenceValue::Operation(0)));
-        assert_eq!(a.run(seq!("a" [Pos] "b").get()), None);
-        assert_eq!(a.run(seq!("a" [Int] "c").get()), None);
+        let (a,_) = load_operations(&builtins!(
+                ("a" [Int] "b"), nop;
+        ));
+        let expectations = expect!(
+            ("a" [Int] "b") => Some(0);
+            ("a" [Pos] "b") => None;
+            ("a" [Int] "c") => None;
+        );
+        verify(a, expectations);
     }
 
     #[test]
     fn test_automaton_union() {
-        let la1 = (seq!("a" [Int] "b"), SequenceType::Operation);
-        let la2 = (seq!("a" Pos "c"), SequenceType::Operation);
-        let mut a = Automaton::from(la1);
-        assert_eq!(a.len(), 4);
-        a.register(la2.0,la2.1);
-        assert_eq!(a.len(), 6);
-        assert_eq!(a.run(seq!("a" [Int] "b").get()), Some(SequenceValue::Operation(0)));
-        assert_eq!(a.run(seq!("a" Pos "c").get()), Some(SequenceValue::Operation(1)));
-        assert_eq!(a.run(seq!("a" Pos "b").get()), None);
+        let (mut a,_) = load_operations(&builtins!(
+                ("a" [Int] "b"), nop;
+                ));
+        a.register(seq!("a" Pos "c"), SequenceValue::Operation(OperationTemplate::placeholder(1)));
+        let expectations = expect!(
+            ("a" [Int] "b") => Some(0);
+            ("a" Pos "c") => Some(1);
+            ("a" Pos "b") => None;
+        );
+        verify(a, expectations);
     }
 
     #[test]
     fn test_automaton_priority_choice() {
-        let la1 = (seq!(a Int b), SequenceType::Operation);
-        let la2 = (seq!(a (Any(0)) b), SequenceType::Operation);
-        let mut a = Automaton::from(la1);
-        assert_eq!(a.len(), 4);
-        a.register(la2.0,la2.1);
-        assert_eq!(a.len(), 6);
-        assert_eq!(
-            a.run(seq!(a Int b).get()),
-            Some(SequenceValue::Operation(0))
+        let (a,_) = load_operations(&builtins!(
+                ("a" Int "b"), nop;
+                ("a" (Any(0)) "b"), nop;
+        ));
+        let expectations = expect!(
+            ("a" Int "b") => Some(0); // chooses the first one
         );
+        verify(a, expectations);
     }
 
     #[test]
     fn test_automaton_priority_choice_vec() {
-        let la1 = (seq!("a" [Int] "b"), SequenceType::Operation);
-        let la2 = (seq!("a" (Any(0)) "b"), SequenceType::Operation);
-        let la3 = (seq!("a" [Any(0)] "b"), SequenceType::Operation);
-        let mut a = Automaton::from(la1);
-        assert_eq!(a.len(), 4);
-        a.register(la2.0,la2.1);
-        assert_eq!(a.len(), 6);
-        a.register(la3.0,la3.1);
-        assert_eq!(a.len(), 8);
-        assert_eq!(a.run(seq!("a" [Int] "b").get()), Some(SequenceValue::Operation(0)));
-        assert_eq!(a.run(seq!("a" Int "b").get()), Some(SequenceValue::Operation(1)));
-        assert_eq!(a.run(seq!("a" [Pos] "b").get()), Some(SequenceValue::Operation(2)));
+        let (a,_) = load_operations(&builtins!(
+                ("a" [Int] "b"), nop;
+                ("a" (Any(0)) "b"), nop;
+                ("a" [Any(0)] "b"), nop;
+        ));
+        let expectations = expect!(
+            ("a" [Int] "b") => Some(0);
+            ("a" Int "b") => Some(1);
+            ("a" [Pos] "b") => Some(2);
+        );
+        verify(a, expectations);
     }
 
     #[test]
     fn test_automaton_backtrace_small() {
-        let la1 = (seq!(a Int b), SequenceType::Operation);
-        let la2 = (seq!(a (Any(0)) c), SequenceType::Operation);
-        let mut a = Automaton::from(la1);
-        a.register(la2.0,la2.1);
-        assert_eq!(a.run(seq!(a Int c).get()), Some(SequenceValue::Operation(1)));
+        let (a,_) = load_operations(&builtins!(
+                ("a" Int "b"), nop;
+                ("a" (Any(0)) "c"), nop;
+        ));
+        let expectations = expect!(
+            ("a" Int "c") => Some(1);
+        );
+        verify(a, expectations);
     }
 
     #[test]
     fn test_automaton_backtrace_large() {
-        let la1 = (seq!("a" Int "a" Int "a"), SequenceType::Operation);
-        let la2 = (seq!("a" (Any(0)) "a" Pos "a"), SequenceType::Operation);
-        let la3 = (seq!("a" (Any(0)) "a" Int "a"), SequenceType::Operation);
-        let la4 = (seq!("a" Int "a" (Any(0)) "b"), SequenceType::Operation);
-        let la5 = (seq!("a" Int "a" Pos "b"), SequenceType::Operation);
-        let mut a = Automaton::from(la1);
-        a.register(la2.0,la2.1);
-        a.register(la3.0,la3.1);
-        a.register(la4.0,la4.1);
-        a.register(la5.0,la5.1);
-        assert_eq!(a.run(seq!("a" Int "a" Int "a").get()), Some(SequenceValue::Operation(0)));
-        assert_eq!(a.run(seq!("a" Int "a" Pos "a").get()), Some(SequenceValue::Operation(1)));
-        assert_eq!(a.run(seq!("a" Color "a" Int "a").get()), Some(SequenceValue::Operation(2)));
-        assert_eq!(a.run(seq!("a" Int "a" Int "b").get()), Some(SequenceValue::Operation(3)));
-        assert_eq!(a.run(seq!("a" Int "a" Pos "b").get()), Some(SequenceValue::Operation(4)));
+        let (a,_) = load_operations(&builtins!(
+                ("a" Int "a" Int "a"), nop;
+                ("a" (Any(0)) "a" Pos "a"), nop;
+                ("a" (Any(0)) "a" Int "a"), nop;
+                ("a" Int "a" (Any(0)) "b"), nop;
+                ("a" Int "a" Pos "b"), nop; 
+        ));
+        let expectations = expect!(
+            ("a" Int "a" Int "a") => Some(0);
+            ("a" Int "a" Pos "a") => Some(1);
+            ("a" Color "a" Int "a") => Some(2);
+            ("a" Int "a" Int "b") => Some(3);
+            ("a" Int "a" Pos "b") => Some(4);
+        );
+        verify(a, expectations);
     }
 
     #[test]
     fn test_get_interpretations() {
         // 1)
-        let ops = [
-            seq!("a" (Any(0)) "b"),
-            seq!("a" (Int) "b"),
-            seq!("a" (Pos) "b"),
-        ];
-        let mut a = Automaton::new();
-        for i in 0..ops.len() {
-            let la = (ops[i].clone(), SequenceType::Operation);
-            a.register(la.0,la.1);
-        }
+        let (a,_) = load_operations(&builtins!(
+                ("a" (Any(0)) "b"), nop;
+                ("a" Int "b"), nop;
+                ("a" Pos "b"), nop;
+        ));
         let paths = a.get_interpretations(seq!("a" (Any(0)) "b").get(), None, &vec![]);
         assert_eq!(paths.len(), 3);
+        let paths = a.get_interpretations(seq!("a" Int "b").get(), None, &vec![]);
+        assert_eq!(paths.len(), 1);
+        let paths = a.get_interpretations(seq!("a" Pos "b").get(), None, &vec![]);
+        assert_eq!(paths.len(), 1);
         // 2)
-        let ops = [
-            seq!(a Int b Int c),
-            seq!(a Int b (Any(1)) c),
-            seq!(a Int b Pos c),
-            seq!(a Pos b Int c),
-            seq!(a Pos b Pos c),
-            seq!(a (Any(1)) b (Any(1)) b),  // bad ending keyword
-        ];
-        let mut a = Automaton::new();
-        for i in 0..ops.len() {
-            let la = (ops[i].clone(), SequenceType::Operation);
-            a.register(la.0,la.1);
-        }
+        let (a,_) = load_operations(&builtins!(
+                (a Int b Int c), nop;
+                (a Int b (Any(1)) c), nop;
+                (a Int b Pos c), nop;
+                (a Pos b Int c), nop;
+                (a Pos b Pos c), nop;
+                (a (Any(1)) b (Any(1)) b), nop;
+        ));
         let paths = a.get_interpretations(seq!(a (Any(0)) b (Any(0)) c).get(), None, &vec![]);
         assert_eq!(paths.len(), 3);
         // 3)
-        let ops = [
-            seq!(a [Int] b),
-            seq!(a [Pos] b),
-            seq!(a [Any(0)] b),
-        ];
-        let mut a = Automaton::new();
-        for i in 0..ops.len() {
-            let la = (ops[i].clone(), SequenceType::Operation);
-            a.register(la.0,la.1);
-        }
+        let (a,_) = load_operations(&builtins!(
+                (a [Int] b), nop;
+                (a [Pos] b), nop;
+                (a [Any(0)] b), nop;
+        ));
         let paths = a.get_interpretations(seq!(a (Any(0)) b).get(), None, &vec![]);
         assert_eq!(paths.len(), 3);
         let paths = a.get_interpretations(seq!(a [Any(0)] b).get(), None, &vec![]);
@@ -368,16 +400,11 @@ mod tests {
         let paths = a.get_interpretations(seq!(a [Int] b).get(), None, &vec![]);
         assert_eq!(paths.len(), 1);
         // 4)
-        let ops = [
-            seq!(a [Any(0)] (Any(0))),
-            seq!(a [Any(0)] Int),
-            seq!(a [Any(0)] Pos),
-        ];
-        let mut a = Automaton::new();
-        for i in 0..ops.len() {
-            let la = (ops[i].clone(), SequenceType::Operation);
-            a.register(la.0,la.1);
-        }
+        let (a,_) = load_operations(&builtins!(
+                (a [Any(0)] (Any(0))), nop;
+                (a [Any(0)] Int), nop;
+                (a [Any(0)] Pos), nop;
+        ));
         let paths = a.get_interpretations(seq!(a [Any(0)] (Any(0))).get(), None, &vec![]);
         assert_eq!(paths.len(), 3);
         let paths = a.get_interpretations(seq!(a (Any(0)) (Any(0))).get(), None, &vec![]);
@@ -385,27 +412,14 @@ mod tests {
         let paths = a.get_interpretations(seq!(a [Int] Color).get(), None, &vec![]);
         assert_eq!(paths, vec![]);
         // 5)
-        let builtins: &[(Sequence, Option<VariableType>, Builtin)] = &builtins!(
-            ("a" Int) => VariableType::Int, add_to;
-            ("a" [Int]) => VariableType::Int, add_to;
-            ("a" Pos) => VariableType::Pos, add_to;
-            );
-        let (aut, ops) = load_operations(builtins);
+        let (a,ops) = load_operations(&builtins!(
+                ("a" Int) => VariableType::Int, nop;
+                ("a" [Int]) => VariableType::Int, nop;
+                ("a" Pos) => VariableType::Pos, nop;
+        ));
         let seq = seq!(a (Any(0)));
-        assert_eq!(aut.get_interpretations(seq.get(), None, &ops).len(), 3);
-        assert_eq!(aut.get_interpretations(seq.get(), Some(&VariableType::Any(1)), &ops).len(), 3);
-        assert_eq!(aut.get_interpretations(seq.get(), Some(&VariableType::Int), &ops).len(), 2);
-    }
-
-    #[test]
-    fn test_run() {
-        let la = (seq!("move" Pos Direction "by" Int), SequenceType::Operation);
-        let mut a = Automaton::from(la);
-        a.register(seq!("set" (Any(0)) "to" (Any(0))), SequenceType::Operation);
-        let s = seq!("move" Pos Direction "by" Int);
-        let x = a.run(s.get());
-        assert_eq!(x.unwrap(), SequenceValue::Operation(0));
-        let x = a.run(seq!("set" Int "to" Int).get());
-        assert_eq!(x.unwrap(), SequenceValue::Operation(1));
+        assert_eq!(a.get_interpretations(seq.get(), None, &ops).len(), 3);
+        assert_eq!(a.get_interpretations(seq.get(), Some(&VariableType::Any(1)), &ops).len(), 3);
+        assert_eq!(a.get_interpretations(seq.get(), Some(&VariableType::Int), &ops).len(), 2);
     }
 }

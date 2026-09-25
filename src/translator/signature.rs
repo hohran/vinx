@@ -20,6 +20,10 @@ pub struct Signature {
 }
 
 impl Signature {
+    pub fn placeholder() -> Self {
+        Self { sequence: Sequence::new(Location::default()), params: vec![], iterators: vec![], structure_param_id: None }
+    }
+
     pub fn from(seq: Sequence) -> Self {
         Self { sequence: seq, params: vec![], iterators: vec![], structure_param_id: None }
     }

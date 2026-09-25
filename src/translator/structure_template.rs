@@ -1,28 +1,30 @@
 use crate::context::Context;
 use crate::translator::Signature;
-use crate::translator::parser::{Call, Expression};
+use crate::translator::parser::Expression;
 use crate::{context, variable::{Scope, Structure, VariableType}};
 
 #[derive(Clone,Debug)]
 pub struct StructureMember {
     name: String,
-    value: Call,
+    value: Expression,
 }
 
 impl StructureMember {
-    pub fn new(name: String, value: Call) -> Self {
+    pub fn new(name: String, value: Expression) -> Self {
         Self { name, value }
     }
 
     pub fn instantiate_at_compiletime(&self, context: &mut context::Compiletime) {
-        let value = self.value.evaluate_at_compiletime(context).unwrap();
-        let has_collision = context.get_stack_mut().add_variable(self.name.clone(), value.clone());
+        let expr_var = self.value.evaluate_at_compiletime(context).unwrap();
+        let value = context.get_value(&expr_var).clone();
+        let has_collision = context.get_stack_mut().add_variable(self.name.clone(), value);
         assert!(!has_collision);
     }
 
     pub fn instantiate_at_runtime(&self, context: &mut context::Runtime) {
-        let value = self.value.evaluate_at_runtime(context).unwrap();
-        let has_collision = context.get_stack_mut().add_variable(self.name.clone(), value.clone());
+        let expr_var = self.value.evaluate_at_runtime(context).unwrap();
+        let value = context.get_value(&expr_var).clone();
+        let has_collision = context.get_stack_mut().add_variable(self.name.clone(), value);
         assert!(!has_collision);
     }
 }

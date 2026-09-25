@@ -2,7 +2,7 @@ use tree_sitter::Node;
 
 use crate::translator::ast::{Expr, Range};
 
-use super::{Sequence, AstBuilder, Type};
+use super::{AstBuilder, Type};
 
 #[derive(Debug, Clone)]
 pub struct VarDefinition {
@@ -11,10 +11,10 @@ pub struct VarDefinition {
     pub value: Option<(Expr, Range)>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Assignment {
     pub name: (String, Range),
-    pub value: (Sequence, Range),
+    pub value: (Expr, Range),
 }
 
 impl AstBuilder {
@@ -34,7 +34,7 @@ impl AstBuilder {
         let name_node = node.child_by_field_name("lhs").unwrap();
         let name = self.get_variable(&name_node);
         let value_node = node.child_by_field_name("rhs").unwrap();
-        let value = (self.get_sequence(&value_node), Range::from(&value_node));
+        let value = (self.get_expr(&value_node), Range::from(&value_node));
         Assignment { name, value }
     }
 }

@@ -1,4 +1,4 @@
-use crate::event::{Func, OperationTemplate, OperationTemplateEnum, TopLevelOperation, builtins::*};
+use crate::event::{Func, OperationTemplate, builtins::*};
 use crate::translator::{SequenceValue, Signature};
 use crate::{seq, word, vtype};
 use crate::variable::VariableType;
@@ -30,24 +30,18 @@ macro_rules! builtins {
 }
 
 /// Generate all builtin operations, note them in the automaton `aut` and return them.
-pub fn load_top_level_operations(aut: &mut Automaton) -> Vec<OperationTemplateEnum> {
-    let builtins: &[(Sequence, TopLevelOperation)] = &[
-        (seq!("load" String), TopLevelOperation::LoadFile),
-        (seq!("do" "not" "save"), TopLevelOperation::DoNotSave),
-    ];
-    let mut ops = vec![];
-    for (seq,f) in builtins {
-        let op = OperationTemplateEnum::TopLevel(*f);
-        if !aut.register(seq.clone(), SequenceValue::Operation(op.clone())) {
-            panic!("error: union did not create any new states");
-        }
-        ops.push(op);
-    }
-    ops
+pub fn load_builtin_operations(aut: &mut Automaton) -> Vec<OperationTemplate> {
+    let mut out = vec![];
+    out.append(&mut load_general_builtin_operations(aut, out.len()));
+    out.append(&mut load_runtime_builtin_operations(aut, out.len()));
+    out.append(&mut load_compiletime_builtin_operations(aut, out.len()));
+    out
 }
 
-/// Generate all builtin operations, note them in the automaton `aut` and return them.
-pub fn load_runtime_builtin_operations(aut: &mut Automaton, id_prefix: usize) -> Vec<OperationTemplateEnum> {
+/// Generate runtime builtin operations, note them in the automaton `aut` and return them.
+fn load_runtime_builtin_operations(aut: &mut Automaton, id_prefix: usize) -> Vec<OperationTemplate> {
+    use runtime::*;
+
     let builtins: &[(Sequence, Option<VariableType>, BuiltinRuntime)] = &builtins!(
         ("draw" Color "rectangle" "outline" "from" Pos "to" Pos), draw_rect_outline;
         ("activate" String), activate;
@@ -65,18 +59,38 @@ pub fn load_runtime_builtin_operations(aut: &mut Automaton, id_prefix: usize) ->
     );
     let mut ops = vec![];
     for (i,(seq,ret,op)) in builtins.into_iter().enumerate() {
-        let op = OperationTemplateEnum::Standard(OperationTemplate::from_builtin(id_prefix + i, seq.clone(), Func::RuntimeBuiltin(*op), ret.clone()));
+        let op = OperationTemplate::from_builtin(id_prefix + i, seq.clone(), Func::RuntimeBuiltin(*op), ret.clone());
         if !aut.register(seq.clone(), SequenceValue::Operation(op.clone())) {
             panic!("error: union did not create any new states");
         }
-        // FIXME: id
+        ops.push(op);
+    }
+    ops
+}
+
+/// Generate compiletime builtin operations, note them in the automaton `aut` and return them.
+fn load_compiletime_builtin_operations(aut: &mut Automaton, id_prefix: usize) -> Vec<OperationTemplate> {
+    use compiletime::*;
+
+    let builtins: &[(Sequence, Option<VariableType>, BuiltinCompiletime)] = &builtins!(
+        ("load" String), load_file;
+        ("do" "not" "save"), do_not_save;
+    );
+    let mut ops = vec![];
+    for (i,(seq,ret,op)) in builtins.into_iter().enumerate() {
+        let op = OperationTemplate::from_builtin(id_prefix + i, seq.clone(), Func::CompiletimeBuiltin(*op), ret.clone());
+        if !aut.register(seq.clone(), SequenceValue::Operation(op.clone())) {
+            panic!("error: union did not create any new states");
+        }
         ops.push(op);
     }
     ops
 }
 
 /// Generate all builtin operations, note them in the automaton `aut` and return them.
-pub fn load_builtin_operations(aut: &mut Automaton, id_prefix: usize) -> Vec<OperationTemplateEnum> {
+fn load_general_builtin_operations(aut: &mut Automaton, id_prefix: usize) -> Vec<OperationTemplate> {
+    use general::*;
+
     let builtins: &[(Sequence, Option<VariableType>, Builtin)] = &builtins!(
         ((Any(0))) => VariableType::Any(0), get_value;
         ("set" (Any(0)) "to" (Any(0))), set;
@@ -106,7 +120,7 @@ pub fn load_builtin_operations(aut: &mut Automaton, id_prefix: usize) -> Vec<Ope
     );
     let mut ops = vec![];
     for (i,(seq,ret,op)) in builtins.into_iter().enumerate() {
-        let op = OperationTemplateEnum::Standard(OperationTemplate::from_builtin(id_prefix + i, seq.clone(), Func::Builtin(*op), ret.clone()));
+        let op = OperationTemplate::from_builtin(id_prefix + i, seq.clone(), Func::Builtin(*op), ret.clone());
         if !aut.register(seq.clone(), SequenceValue::Operation(op.clone())) {
             panic!("error: union did not create any new states");
         }

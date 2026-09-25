@@ -2,7 +2,7 @@ use std::fmt::{Debug, Display};
 
 use crate::{event::{Event, event::{EventEffect, Func, Operation}}, translator::{Sequence, Signature, parser::{Expression, OperationMember}}, variable::{Scope, Stack, Variable, VariableType}};
 
-pub type Operations = Vec<OperationTemplateEnum>;
+pub type Operations = Vec<OperationTemplate>;
 
 #[derive(Clone,PartialEq,Debug)]
 pub struct OperationTemplate {
@@ -13,31 +13,35 @@ pub struct OperationTemplate {
     result: Option<VariableType>,
 }
 
-#[derive(Debug,PartialEq, Clone, Copy)]
-pub enum TopLevelOperation {
-    LoadFile,
-    DoNotSave,
-}
-
-#[derive(Clone,PartialEq,Debug)]
-pub enum OperationTemplateEnum {
-    Standard(OperationTemplate),
-    TopLevel(TopLevelOperation),
-}
-
-impl OperationTemplateEnum {
-    pub fn get(&self) -> &OperationTemplate {
-        let Self::Standard(op) = self else {
-            panic!("error: tried to get a top-level operation"); // TODO: friendlify
-        };
-        op
-    }
-}
+// #[derive(Debug,PartialEq, Clone, Copy)]
+// pub enum TopLevelOperation {
+//     LoadFile,
+//     DoNotSave,
+// }
+//
+// #[derive(Clone,PartialEq,Debug)]
+// pub enum OperationTemplateEnum {
+//     Standard(OperationTemplate),
+//     TopLevel(TopLevelOperation),
+// }
+//
+// impl OperationTemplateEnum {
+//     pub fn get(&self) -> &OperationTemplate {
+//         let Self::Standard(op) = self else {
+//             panic!("error: tried to get a top-level operation"); // TODO: friendlify
+//         };
+//         op
+//     }
+// }
 
 impl OperationTemplate {
     pub fn new(id: usize, signature: Signature, events: Vec<Event>, members: Vec<OperationMember>, result: Option<VariableType>) -> Self {
         Self::check_return_type(signature.sequence.get_types(), &result);
         Self { id, effect: EventEffect::Composed(events), members, signature, result }
+    }
+
+    pub fn placeholder(id: usize) -> Self {
+        Self { id, signature: Signature::placeholder(), effect: EventEffect::Composed(vec![]), members: vec![], result: None }
     }
 
     pub fn get_id(&self) -> usize {
@@ -95,7 +99,7 @@ impl OperationTemplate {
     }
 
     pub fn instantiate(&self, params: Vec<Expression>) -> Operation {
-        let return_type = self.___compute_return_type(&params.iter().map(|expr| expr.get_type()).collect());
+        let return_type = self.___compute_return_type(&params.iter().map(|expr| expr.get_type_unchecked()).collect());
         Operation::new(params, self.effect.clone(), return_type, Stack::scope_from_members(&self.members), self.clone())
     }
 

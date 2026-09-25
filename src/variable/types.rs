@@ -123,7 +123,7 @@ impl VariableType {
     /// * Int + Int -> Int
     /// * Any(1) + Int -> Int
     /// * \[Any(1)] + \[\[Int]] -> [[Int]]
-    /// * Any(1) + Any(2) -> Any(1)
+    /// * Any(1) + Any(2) -> Any(2)
     /// * Any(1) + \[Any(1)] -> None !!! think about it
     /// * Any(1) + \[Any(2)] -> \[Any(2)] - this is ok, because the vector contains different binding
     pub fn intersect(&self, other: &Self) -> Option<Self> {
@@ -315,8 +315,8 @@ mod tests {
         assert_eq!(vt3.intersect(&vt2), Some(vtype!(Int)));
         // [Any(1)] + [[Int]] -> [[Int]]
         assert_eq!(vt5.intersect(&vt6), Some(vtype!([[Int]])));
-        // Any(1) + Any(2) -> Any(1)
-        assert_eq!(vt3.intersect(&vt4), Some(vtype!(Any(1))));
+        // Any(1) + Any(2) -> Any(2)
+        assert!(vt3.intersect(&vt4).map_or(false, |t| t.strictly_matches(&vtype!(Any(2)))));
         // Any(1) + [Any(1)] -> None !!! think about it
         assert_eq!(vt3.intersect(&vt5), None);
     }

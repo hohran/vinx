@@ -1,9 +1,10 @@
 use std::collections::HashSet;
 use crate::context::Context;
 
+use crate::event::OperationTemplate;
 use crate::translator::error::Warning;
 use crate::translator::structure_template::StructureMember;
-use crate::{translator::{Sequence, SequenceValue, Signature, StructureTemplate, ast, automata::Automaton, error::CompilationError, parser::parser::Parser, sequence::{OperationId, SequenceType}, type_constraints::TypeConstraints, word::Word}, variable::{Variable, VariableType}};
+use crate::{translator::{Sequence, SequenceValue, Signature, StructureTemplate, ast, automata::Automaton, error::CompilationError, parser::parser::Parser, sequence::OperationId, type_constraints::TypeConstraints, word::Word}, variable::VariableType};
 
 impl Parser {
     /// Parse structure with signature in `signature_node` and definition in `definition_node`.
@@ -33,42 +34,43 @@ impl Parser {
     /// Alongside this functionality, all present methods are automatically noted in `method_aut`
     /// and also returned by their signature and id.
     fn get_structure_interpretations(&mut self, operands: &Vec<String>, definition: &ast::Definition, method_aut: &mut Automaton) -> Result<(HashSet<TypeConstraints>,Vec<(Signature,OperationId)>), CompilationError> {
-        let mut methods: Vec<(Signature,usize)> = vec![];
-        let mut structure_interpretations = HashSet::new();
-        let mut member_names = vec![];
-        structure_interpretations.insert(TypeConstraints::new());
-        let mut method_count = 0;
-        for stmt in &definition.body {
-            match &stmt.0 {
-                ast::definition::Statement::VarDefinition(var_def) => {
-                    let member_id = self.new_unresolved_variable();
-                    let member = self.get_var_definition(var_def, Some(member_id))?;
-                    let name = member.get_name().to_string();
-                    member_names.push(name.clone());
-                    if !self.context.add_variable(name.clone(), member.get_type().default()) {
-                        return Err(CompilationError::TemporaryError(format!("duplicate member name in operation definition: {}", name)));
-                    }
-                    let (seq, _) = member.get_value();
-                    self.update_structure_interpretations_with_var(&mut structure_interpretations, member.get_type(), seq);
-                }
-                ast::definition::Statement::Definition(d) => {
-                    self.context.push_scope(); {
-                        let op = self.parse_signature(&d.signature)?;
-                        let (op_members,interpretations) = self.parse_operation_definition(&d, Some(method_aut))?;
-                        let constraint_size = operands.len()+member_names.len()+op.params.len();
-                        // this also registers the method
-                        self.update_structure_interpretations(&mut structure_interpretations, &op, interpretations, constraint_size, method_aut);
-                        self.resolve_variables(op.params.len()+op_members.len());
-                        methods.push((op,method_count));
-                        method_count += 1;
-                    } self.context.pop_scope();
-                }
-                ast::definition::Statement::Assignment(_) => panic!("error: assignments are not possible in structure definitions"), // TODO: friendlify
-                ast::definition::Statement::Event(_) => panic!("error: events are not possible in structure definitions"),
-            }
-        }
-        self.resolve_variables(operands.len()+member_names.len());
-        Ok((structure_interpretations,methods))
+        todo!();
+        // let mut methods: Vec<(Signature,usize)> = vec![];
+        // let mut structure_interpretations = HashSet::new();
+        // let mut member_names = vec![];
+        // structure_interpretations.insert(TypeConstraints::new());
+        // let mut method_count = 0;
+        // for stmt in &definition.body {
+        //     match &stmt.0 {
+        //         ast::definition::Statement::VarDefinition(var_def) => {
+        //             let member_id = self.new_unresolved_variable();
+        //             let member = self.get_var_definition(var_def, Some(member_id))?;
+        //             let name = member.get_name().to_string();
+        //             member_names.push(name.clone());
+        //             if !self.context.add_variable(name.clone(), member.get_type().default()) {
+        //                 return Err(CompilationError::TemporaryError(format!("duplicate member name in operation definition: {}", name)));
+        //             }
+        //             let (seq, _) = member.get_value();
+        //             self.update_structure_interpretations_with_var(&mut structure_interpretations, member.get_type(), seq);
+        //         }
+        //         ast::definition::Statement::Definition(d) => {
+        //             self.context.push_scope(); {
+        //                 let op = self.parse_signature(&d.signature)?;
+        //                 let (op_members,interpretations) = self.parse_operation_definition(&d, Some(method_aut))?;
+        //                 let constraint_size = operands.len()+member_names.len()+op.params.len();
+        //                 // this also registers the method
+        //                 self.update_structure_interpretations(&mut structure_interpretations, &op, interpretations, constraint_size, method_aut);
+        //                 self.resolve_variables(op.params.len()+op_members.len());
+        //                 methods.push((op,method_count));
+        //                 method_count += 1;
+        //             } self.context.pop_scope();
+        //         }
+        //         ast::definition::Statement::Assignment(_) => panic!("error: assignments are not possible in structure definitions"), // TODO: friendlify
+        //         ast::definition::Statement::Event(_) => panic!("error: events are not possible in structure definitions"),
+        //     }
+        // }
+        // self.resolve_variables(operands.len()+member_names.len());
+        // Ok((structure_interpretations,methods))
     }
 
     /// Refine structure interpretations to match `method` with `events_interpretations`.
@@ -124,62 +126,28 @@ impl Parser {
     /// global automaton.
     /// It is important that its signature has set the desired types.
     fn create_typed_structure(&mut self, signature: &Signature, definition: &ast::Definition, id: usize) -> Result<(), CompilationError> {
-        let mut members = vec![];
-        for stmt in &definition.body {
-            if let ast::definition::Statement::VarDefinition(var_def) = &stmt.0 {
-                members.push(self.get_member_definition(var_def)?);
-            }
-        }
-        if !self.automaton.register(signature.sequence.clone(), SequenceType::Structure) {
-            self.warn(Warning::ExistingSignature(signature.clone())); // this warning is maybe not needed
-        } else {
-            let structure = StructureTemplate::new(id, signature.params.clone(), signature.sequence.get_types_cloned(), members, signature.clone());
-            self.structures.push(structure);
-        }
-        Ok(())
+        todo!();
+        // let mut members = vec![];
+        // for stmt in &definition.body {
+        //     if let ast::definition::Statement::VarDefinition(var_def) = &stmt.0 {
+        //         members.push(self.get_member_definition(var_def)?);
+        //     }
+        // }
+        // let structure = StructureTemplate::new(id, signature.params.clone(), signature.sequence.get_types_cloned(), members, signature.clone());
+        // if !self.automaton.register(signature.sequence.clone(), SequenceValue::Structure(structure.clone())) {
+        //     self.warn(Warning::ExistingSignature(signature.clone())); // this warning is maybe not needed
+        // } else {
+        //     self.structures.push(structure);
+        // }
+        // Ok(())
     }
 
-    /// Get a member definition from an operation statement (e.g., $member = something).
     pub fn get_member_definition(&mut self, var_def: &ast::VarDefinition) -> Result<StructureMember, CompilationError> {
         let definition = self.get_var_definition(var_def, None)?;
         let name = definition.get_name().clone();
-        let (seq, params) = definition.get_value();
-        let sv = self.get_sequence_value(seq)?;
-        let param_types = params.iter().map(|p| p.get_type()).collect();
-        let seq_type = sv.get_return_type(&param_types).unwrap();
-        if !seq_type.is_assignable_to(definition.get_type()) {
-            panic!("error: type {seq_type} does not match declared type {}", definition.get_type()); // TODO friendlify
-        }
-        self.context.update_variable(&name, seq_type.default());
-        return Ok((name, sv, params.clone()));
-        //
-        // //
-        // let member_name = &var_def.name.0;
-        // if let Some(t) = &var_def.typ {
-        //     let typ = self.parse_type(&t.0)?;
-        //     if let Some(val) = &var_def.value {
-        //         let (seq,params) = self.parse_sequence(&val.0)?;
-        //         let sv = self.get_sequence_value(&seq)?;
-        //         let seq_type = sv.into_type(&self.operations);
-        //         if !seq_type.is_assignable_to(&typ) {
-        //             panic!("error: type {seq_type} does not match declared type {typ}"); // TODO friendlify
-        //         }
-        //         self.context.update_variable(member_name, seq_type.default());
-        //         Ok((member_name.clone(),sv.clone(),params))
-        //     } else {
-        //         self.context.update_variable(member_name, typ.default());
-        //         // FIXME: this expects that operation 0 is the single value return -v
-        //         Ok((member_name.clone(),SequenceValue::Operation(0),vec![typ.default().to_var()]))
-        //     }
-        // } else {
-        //     let Some(val) = &var_def.value else {
-        //         panic!("error: variable definition needs to have at least one of [type, value] specified");
-        //     };
-        //     let (seq,params) = self.parse_sequence(&val.0)?;
-        //     let sv = self.get_sequence_value(&seq)?;
-        //     self.context.update_variable(member_name, sv.into_type(&self.operations).default());
-        //     Ok((member_name.clone(),sv.clone(),params))
-        // }
+        let expr = definition.get_value();
+        self.context.update_variable(&name, expr.get_type_unchecked().default());
+        Ok(StructureMember::new(name, expr.clone()))
     }
 
     /// Create concrete methods for the structure given by `structure_id`.
@@ -191,8 +159,8 @@ impl Parser {
     /// _for `structure_id` = 3_
     fn create_methods(&mut self, method_aut: &Automaton, methods: &Vec<(Signature,usize)>, structure_id: usize, definition: &ast::Definition) -> Result<(), CompilationError> {
         for (seq, sv) in method_aut.get_all_sequences() {
-            let SequenceValue::Operation(method_id) = sv else { panic!(); };
-            let Some((op,_)) = methods.iter().find(|m| m.1 == method_id) else {
+            let SequenceValue::Operation(method) = sv else { panic!(); };
+            let Some((op,_)) = methods.iter().find(|m| m.1 == method.get_id()) else {
                 panic!();
             };
             self.context.push_scope(); {
@@ -200,7 +168,7 @@ impl Parser {
                 signature.swap_types(&seq.get_types_cloned());
                 signature.set_structure_param(structure_id)?;
                 self.push_signature_to_stack(&signature);
-                let method = definition.find_nth_method(method_id);
+                let method = definition.find_nth_method(method.get_id());
                 let member_names = self.get_operation_members(method)?;
                 let events = self.get_operation_definition(method, Some(structure_id))?;
                 self.add_operation(signature, events, self.get_members(&member_names));
@@ -237,6 +205,7 @@ impl Parser {
                 new_signature.push(w.clone());
             }
         }
-        aut.register(new_signature, SequenceType::Operation);
+        let placeholder = OperationTemplate::placeholder(aut.get_count());
+        aut.register(new_signature, SequenceValue::Operation(placeholder));
     }
 }

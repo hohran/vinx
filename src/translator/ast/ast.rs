@@ -1,19 +1,15 @@
-use crate::translator::ast::{Assignment, Range, Sequence};
+use crate::translator::ast::Event;
 
-use super::{Action, VarDefinition, Definition, AstBuilder};
+use super::{Action, Definition, AstBuilder};
 
 pub enum AstNode {
     Action(Action),
-    VarDefinition(VarDefinition),
-    Definition(Definition),
-    Sequence(Sequence),
-    Assignment(Assignment),
-    // FileLoad(String),
-    // Comment(String),
+    Definition(Definition), // TODO: test
+    Event(Event), // TODO: test
 }
 
 pub struct Ast {
-    pub nodes: Vec<(AstNode, Range)>,
+    pub nodes: Vec<AstNode>,
 }
 
 impl Ast {
@@ -30,34 +26,20 @@ impl Ast {
         let tree = parser.parse(&contents, None).unwrap();
         let root_node = tree.root_node();
         let builder = AstBuilder::new(filepath, contents.to_string());
-        let mut nodes = vec![];
-        for node in root_node.children(&mut root_node.walk()) {
-            let ast_node = match node.kind() {
-                "comment" | ";" => { continue; }
-                "action" => AstNode::Action(builder.get_action(&node)),
-                "var_definition" => AstNode::VarDefinition(builder.get_var_definition(&node)),
-                "assignment" => AstNode::Assignment(builder.get_var_assignment(&node)),
-                "definition" => AstNode::Definition(builder.get_definition(&node)),
-                "sequence" => AstNode::Sequence(builder.get_sequence(&node)),
-                x => panic!("error: unexpected top-level node: `{x}")
-            };
-            nodes.push((ast_node, Range::from(&node)));
-        }
-        Ast { nodes }
+        Self::parse_from_root_node(builder, root_node)
     }
 
     pub fn parse_from_root_node(builder: AstBuilder, root_node: tree_sitter::Node) -> Self {
         let mut nodes = vec![];
         for node in root_node.children(&mut root_node.walk()) {
             let ast_node = match node.kind() {
-                "comment" | ";" => { continue; }
+                "comment" => continue,
                 "action" => AstNode::Action(builder.get_action(&node)),
-                "var_definition" => AstNode::VarDefinition(builder.get_var_definition(&node)),
                 "definition" => AstNode::Definition(builder.get_definition(&node)),
-                "sequence" => AstNode::Sequence(builder.get_sequence(&node)),
+                "event" => AstNode::Event(builder.get_event(&node)),
                 x => panic!("error: unexpected top-level node: `{x}")
             };
-            nodes.push((ast_node, Range::from(&node)));
+            nodes.push(ast_node);
         }
         Ast { nodes }
     }
@@ -70,35 +52,22 @@ mod tests {
 
     #[test]
     fn test_ast() {
-        let contents = "
-        load \"basics\";
-        $positions := [(0,0),(1,1),(2,2)];
-        move [$x] by $p := move $x by $p;
-        // moves positions
-        every frame move $positions by (10,10);";
-        let tree = parse(contents);
-        let root = tree.root_node();
-        assert!(get!(root => sequence).has_error() == false);
-        assert!(get!(root => var_definition).has_error() == false);
-        assert!(get!(root => definition).has_error() == false);
-        assert!(get!(root => comment).has_error() == false);
-        assert!(get!(root => action).has_error() == false);
-    }
-
-    #[test]
-    fn test_parse() {
-        // empty file
-        let ast = ast!("");
-        assert!(ast.nodes.is_empty());
-
-        // non-empty file
         let ast = ast!("
-        load \"basics\";
-        $positions := [(0,0),(1,1),(2,2)];
-        move [$x] by $p := move $x by $p;
-        // moves positions
-        every frame move $positions by (10,10);
-            ");
-        assert_eq!(ast.nodes.len(), 4);
+            $positions := [(0,0),(1,1),(2,2)]; // event
+            print $positions one by one;       // event
+            $positions = [(1,1)];              // event
+            every frame do something;        // action
+            every frame { do something; }    // action
+            new function := { do something; }   // definition
+            process [$x] := { process $x; }     // definition
+        ");
+        assert_eq!(ast.nodes.len(), 7);
+        let event_count = ast.nodes.iter().filter(|n| matches!(n, AstNode::Event(_))).count();
+        assert_eq!(event_count, 3);
+        let action_count = ast.nodes.iter().filter(|n| matches!(n, AstNode::Action(_))).count();
+        assert_eq!(action_count, 2);
+        let definition_count = ast.nodes.iter().filter(|n| matches!(n, AstNode::Definition(_))).count();
+        assert_eq!(definition_count, 2);
+        assert_eq!(ast!("").nodes.len(), 0); // empty file
     }
 }

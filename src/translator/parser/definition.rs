@@ -1,17 +1,16 @@
-use crate::{translator::{Sequence, Signature, ast::{self, Range}, error::CompilationError, parser::parser::Parser, word::Word}, variable::{Variable, VariableType, VariableValue}};
+use crate::{translator::{Sequence, Signature, ast::{self, Range}, error::{CompilationError, Location}, parser::{Expression, parser::Parser}, word::Word}, variable::{VariableType, VariableValue}};
 use crate::context::Context;
 
 pub struct VarDefinition {
     name: (String, Range),
     t: (VariableType, Range),
-    value: (Sequence, Range),
-    params: Vec<Variable>,
+    value: Expression,
     is_type_only: bool,
 }
 
 impl VarDefinition {
-    pub fn new(name: (String, Range), t: (VariableType, Range), value: (Sequence, Range), params: Vec<Variable>, is_type_only: bool) -> Self {
-        Self { name, t, value, params, is_type_only }
+    pub fn new(name: (String, Range), t: (VariableType, Range), value: Expression, is_type_only: bool) -> Self {
+        Self { name, t, value, is_type_only }
     }
 
     pub fn get_name(&self) -> &String {
@@ -22,12 +21,12 @@ impl VarDefinition {
         &self.t.0
     }
 
-    pub fn get_value(&self) -> (&Sequence, &Vec<Variable>) {
-        (&self.value.0, &self.params)
+    pub fn get_value(&self) -> &Expression {
+        &self.value
     }
 
-    pub fn get_value_range(&self) -> &Range {
-        &self.value.1
+    pub fn get_value_location(&self) -> Location {
+        self.value.get_location()
     }
 
     pub fn get_name_range(&self) -> &Range {
@@ -52,45 +51,67 @@ impl Parser {
     pub fn get_var_definition(&self, var_def: &ast::VarDefinition, var_id: Option<usize>) -> Result<VarDefinition, CompilationError> {
         let name = var_def.name.clone();
         match (&var_def.value, &var_def.typ) {
-            (Some((val,vr)), Some((t,tr))) => {
-                let (seq, params) = self.parse_sequence(val)?;
+            (Some((val,_)), Some((t,tr))) => {
+                let expr = self.parse_expression(val)?;
                 let t = (self.parse_type(t)?, *tr);
-                Ok(VarDefinition::new(name, t, (seq,*vr), params, false))
+                if !expr.get_type_unchecked().is_assignable_to(&t.0) {
+                    return Err(CompilationError::TemporaryError(format!("type `{}` is not assignable to {}", expr.get_type_unchecked(), t.0)))
+                }
+                Ok(VarDefinition::new(name, t, expr, false))
             }
-            (Some((val,vr)), None) => {
-                let (seq, params) = self.parse_sequence(val)?;
-                let t = if let Some(binding) = var_id {
-                    VariableType::Any(binding)
-                } else {
-                    let sv = self.get_sequence_value(&seq)?;
-                    sv.get_general_return_type()
-                };
-                Ok(VarDefinition::new(name, (t, Range::default()), (seq,*vr), params, false))
+            (Some((val,_)), None) => {
+                let expr = self.parse_expression(val)?;
+                // let t = if let Some(binding) = var_id {
+                //     VariableType::Any(binding)
+                // } else {
+                //     let sv = self.get_sequence_value(&seq)?;
+                //     sv.get_general_return_type()
+                // };
+                // TODO: previously, we got a general return type, now a 'concrete'... think about it
+                let t = var_id.map_or(expr.get_type_unchecked(), |binding| VariableType::Any(binding));
+                Ok(VarDefinition::new(name, (t, Range::default()), expr, false))
             }
             (None, Some((t,tr))) => {
                 let t = self.parse_type(t)?;
-                let params = vec![t.default().to_var()];
-                let mut value = Sequence::new(self.get_location(tr));
-                value.push(Word::Type(t.clone()));
-                Ok(VarDefinition::new(name, (t,*tr), (value, Range::default()), params, true))
+                let expr = Expression::Constant(t.default());
+                Ok(VarDefinition::new(name, (t,*tr), expr, true))
             }
             _ => panic!("error: variable definition without type and value")
         }
     }
 
+    // pub fn define_variable(&mut self, var_definition: &ast::VarDefinition) -> Result<(), CompilationError> {
+    //     let var_definition = self.get_var_definition(var_definition, None)?;
+    //     let (seq, params) = var_definition.get_value();
+    //     let sv = self.get_sequence_value(seq)?;
+    //     let value = sv.into_value(params.clone(), &self.operations, &self.structures, &mut self.context); // FIXME so that we dont clone params
+    //     let name = var_definition.get_name();
+    //     if self.is_forbidden_variable_name(name) {
+    //         return Err(CompilationError::ForbiddenVariableName(name.clone(), var_definition.get_value_location()));
+    //     }
+    //     if self.context.add_variable(name.clone(), value.clone()) {
+    //         Ok(())
+    //     } else {
+    //         Err(CompilationError::RedeclaredVariable(name.clone(), var_definition.get_value_location()))
+    //     }
+    // }
+
+    // Define a variable in the given context, expecting its name is unique and not forbidden.
     pub fn define_variable(&mut self, var_definition: &ast::VarDefinition) -> Result<(), CompilationError> {
         let var_definition = self.get_var_definition(var_definition, None)?;
-        let (seq, params) = var_definition.get_value();
-        let sv = self.get_sequence_value(seq)?;
-        let value = sv.into_value(params.clone(), &self.operations, &self.structures, &mut self.context); // FIXME so that we dont clone params
         let name = var_definition.get_name();
         if self.is_forbidden_variable_name(name) {
-            return Err(CompilationError::ForbiddenVariableName(name.clone(), self.get_location(var_definition.get_value_range())));
+            return Err(CompilationError::ForbiddenVariableName(name.clone(), var_definition.get_value_location()));
         }
-        if self.context.add_variable(name.clone(), value.clone()) {
+        let expr = var_definition.get_value();
+        let Some(expr_var) = expr.evaluate_at_compiletime(&mut self.context) else {
+            panic!("error: no return value");
+        };
+        let value = self.context.get_value(&expr_var).clone();
+        if self.context.add_variable(name.clone(), value) {
             Ok(())
         } else {
-            Err(CompilationError::RedeclaredVariable(name.clone(), self.get_location(var_definition.get_value_range())))
+            Err(CompilationError::RedeclaredVariable(name.clone(), var_definition.get_value_location()))
         }
     }
 
@@ -99,9 +120,11 @@ impl Parser {
         if self.context.get_stack().get_variable(name).is_none() {
             return Err(CompilationError::AssignmentOfUndefinedVariable(name.clone(), self.get_location(&assignment.name.1)))
         }
-        let (seq, params) = self.parse_sequence(&assignment.value.0)?;
-        let sv = self.get_sequence_value(&seq)?;
-        let value = sv.into_value(params, &self.operations, &self.structures, &mut self.context); // FIXME so that we dont clone params
+        let expr = self.parse_expression(&assignment.value.0)?;
+        let Some(expr_var) = expr.evaluate_at_compiletime(&mut self.context) else {
+            panic!("error: no return value");
+        };
+        let value = self.context.get_value(&expr_var).clone();
         let old_value = self.get_variable_value(&assignment.name)?;
         if !value.is_assignable_to(old_value) {
             return Err(CompilationError::UnexpectedType(name.clone(), value.get_type(), old_value.get_type(), self.get_location(&Range::from(assignment))));
@@ -111,13 +134,13 @@ impl Parser {
     }
 
     pub fn parse_definition(&mut self, definition: &ast::Definition) -> Result<(), CompilationError> {
-        let structure_proof = definition.body.iter().find(|(n,_)| matches!(n, ast::definition::Statement::Definition(_)));
-        let operation_proof = definition.body.iter().find(|(n,_)| matches!(n, ast::definition::Statement::Event(_)));
+        let structure_proof = definition.body.iter().find(|n| matches!(n, ast::definition::Statement::Definition(_)));
+        let operation_proof = definition.body.iter().find(|n| matches!(n, ast::definition::Statement::Event(_)));
         if structure_proof.is_some() && operation_proof.is_some() {
             return Err(CompilationError::VagueDefinition(
                     self.get_location(&Range::from(&definition.signature)), // signature
-                    self.get_location(&operation_proof.unwrap().1), // seq
-                    self.get_location(&structure_proof.unwrap().1))) // method
+                    self.get_location(&operation_proof.unwrap().into()), // seq
+                    self.get_location(&structure_proof.unwrap().into()))) // method
         }
         self.context.push_scope(); {
             if structure_proof.is_some() {

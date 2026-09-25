@@ -1,12 +1,13 @@
 use std::fmt::Debug;
 
-use crate::{context, event::{Event, builtins::{Builtin, BuiltinRuntime}, operation::OperationTemplate}, translator::parser::Expression, variable::{Scope, Stack, Variable, VariableType, VariableValue}};
+use crate::{context, event::{Event, builtins::{Builtin, BuiltinCompiletime, BuiltinRuntime}, operation::OperationTemplate}, translator::parser::Expression, variable::{Scope, Stack, Variable, VariableType, VariableValue}};
 use context::Context;
 
 #[derive(Clone,PartialEq,Debug)]
 pub enum Func {
     Builtin(Builtin),
     RuntimeBuiltin(BuiltinRuntime),
+    CompiletimeBuiltin(BuiltinCompiletime),
 }
 
 #[derive(Clone,PartialEq,Debug)]
@@ -42,7 +43,8 @@ impl Operation {
         self.active_struct = false;
     }
 
-    /// Evaluate all parameters, pass them to be processed, and update them (when possible).
+    /// Evaluate all parameters, pass them to be processed, and update them (when possible)...
+    /// should we really update?.
     pub fn process_at_compiletime<'a>(&mut self, context: &mut context::Compiletime) -> Option<VariableValue> {
         // evaluate params
         let mut params: Vec<Variable> = self.params.iter()
@@ -57,6 +59,7 @@ impl Operation {
         let output = match &self.effect {
             EventEffect::Builtin(func) => match func {
                 Func::Builtin(f) => f(context, &mut params),
+                Func::CompiletimeBuiltin(f) => f(context, &mut params),
                 Func::RuntimeBuiltin(_) => panic!("error: tried to call runtime function at compiletime: `{}`", self.template.get_signature())
             }
             EventEffect::Composed(_) => todo!("composed functions at compiletime"),
@@ -69,16 +72,6 @@ impl Operation {
         // return the output
         output
     }
-
-    // pub fn process<'a, 'b: 'a>(&mut self, context: &'a mut context::Runtime<'b>, operations: &Operations) -> Option<VariableValue> {
-    //     match &self.effect {
-    //         EventEffect::Builtin(func) => match func {
-    //             Func::Builtin(f) => f(context, &mut self.params),
-    //             Func::RuntimeBuiltin(f) => f(context, &mut self.params),
-    //         }
-    //         EventEffect::Composed(_) => self.process_composed(context, operations),
-    //     }
-    // }
 
     pub fn process<'a, 'b: 'a>(&mut self, context: &'a mut context::Runtime<'b>) -> Option<VariableValue> {
         // evaluate params
@@ -95,6 +88,7 @@ impl Operation {
             EventEffect::Builtin(func) => match func {
                 Func::Builtin(f) => f(context, &mut params),
                 Func::RuntimeBuiltin(f) => f(context, &mut params),
+                Func::CompiletimeBuiltin(_) => panic!("error: tried to call compiletime function at runtime: `{}`", self.template.get_signature())
             }
             EventEffect::Composed(_) => self.process_composed(&mut params, context),
         };
@@ -133,6 +127,9 @@ impl Operation {
     ///
     /// The order dictates, that structure variables can be shadowed by the operation variables.
     fn push_layers(&mut self, params: &mut Vec<Variable>, context: &mut dyn context::Context) {
+        // it is important to fetch the operation layer before pushing the structure layer.
+        // if a parameter would have the same name and type as a structure member, it would be
+        // overwritten otherwise because of the way the variable value is evaluated.
         let operation_layer = self.get_operation_layer(params, context.get_stack());
         self.push_structure_layer(params, context.get_stack_mut()); // having layers in this order makes sure that method parameters override structure members
         context.push_scope_with(operation_layer);
